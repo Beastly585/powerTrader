@@ -24,8 +24,8 @@
 </main>
 
 <script type="module">
-import { supabase, ADMIN_EMAIL } from "./js/supabase.js";
-import { mountChrome, banner, isAdmin as _ } from "./js/ui.js";
+import { supabase, ADMIN_EMAIL, isAdmin as _ } from "./js/supabase.js";
+import { mountChrome, banner } from "./js/ui.js";
 mountChrome("");
 
 document.getElementById("f").addEventListener("submit", async (e) => {
