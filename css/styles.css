@@ -1,0 +1,148 @@
+/* =========================================================================
+   Quiet Terminal — design system
+   Dark, editorial, monospace-meets-serif. Hairline rules. Generous space.
+   ========================================================================= */
+:root{
+  --bg:#0e0f10;
+  --bg-elev:#15171a;
+  --ink:#ececec;
+  --ink-dim:#9aa0a6;
+  --ink-faint:#5a5f66;
+  --line:#262a30;
+  --accent:#e6ff5a;        /* acid yellow-green — only one accent */
+  --accent-ink:#0e0f10;
+  --danger:#ff6b6b;
+  --radius:2px;
+  --maxw:920px;
+  --mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --serif:"Newsreader","Source Serif Pro", Georgia, serif;
+  --sans:"Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+  font-family:var(--serif);font-size:17px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
+a:hover{color:var(--accent);border-color:var(--accent)}
+img{max-width:100%;display:block}
+hr{border:0;border-top:1px solid var(--line);margin:2.5rem 0}
+
+/* Layout ------------------------------------------------------------------ */
+.wrap{max-width:var(--maxw);margin:0 auto;padding:2.5rem 1.25rem 6rem}
+header.site{display:flex;justify-content:space-between;align-items:baseline;
+  border-bottom:1px solid var(--line);padding-bottom:1rem;margin-bottom:2rem;
+  flex-wrap:wrap;gap:1rem}
+.brand{font-family:var(--mono);font-size:.85rem;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink);border:0}
+.brand .dot{color:var(--accent)}
+nav.site{display:flex;gap:1.25rem;flex-wrap:wrap}
+nav.site a{font-family:var(--mono);font-size:.78rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-dim);border:0;padding-bottom:2px}
+nav.site a.active,nav.site a:hover{color:var(--accent);border-bottom:1px solid var(--accent)}
+
+footer.site{margin-top:6rem;padding-top:1.5rem;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-faint);
+  display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem}
+footer.site a{color:var(--ink-faint);border:0}
+footer.site a:hover{color:var(--accent)}
+
+/* Type ------------------------------------------------------------------- */
+h1,h2,h3{font-family:var(--serif);font-weight:500;letter-spacing:-.01em;line-height:1.15;margin:0 0 .5rem}
+h1{font-size:clamp(2.2rem,5vw,3.4rem)}
+h2{font-size:clamp(1.5rem,3vw,2rem)}
+h3{font-size:1.15rem}
+.kicker{font-family:var(--mono);font-size:.72rem;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--ink-faint);margin-bottom:.6rem}
+.lede{color:var(--ink-dim);font-size:1.05rem;max-width:60ch}
+.meta{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-faint)}
+
+/* Entries ---------------------------------------------------------------- */
+.entry{padding:2rem 0;border-bottom:1px solid var(--line)}
+.entry:last-child{border-bottom:0}
+.entry-head{display:flex;justify-content:space-between;align-items:baseline;
+  gap:1rem;flex-wrap:wrap;margin-bottom:.6rem}
+.entry h2 a,.entry h3 a{border:0}
+.entry .body{color:var(--ink);white-space:pre-wrap;margin:.5rem 0}
+.entry .images{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:.5rem;margin-top:1rem}
+.entry .images img{border:1px solid var(--line);aspect-ratio:4/3;object-fit:cover}
+.tags{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem}
+.tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-dim);border:1px solid var(--line);
+  padding:.15rem .5rem;border-radius:var(--radius)}
+
+.price-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+  gap:.5rem;margin-top:1rem;font-family:var(--mono);font-size:.85rem}
+.price-cell{border:1px solid var(--line);padding:.6rem .75rem;border-radius:var(--radius)}
+.price-cell .lbl{color:var(--ink-faint);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;display:block;margin-bottom:.2rem}
+.price-cell .val{color:var(--accent)}
+
+.linklist{margin-top:1rem;font-family:var(--mono);font-size:.85rem;display:flex;flex-direction:column;gap:.25rem}
+.linklist a{color:var(--ink-dim);border:0}
+.linklist a:before{content:"↳ ";color:var(--ink-faint)}
+.linklist a:hover{color:var(--accent)}
+
+/* Forms ------------------------------------------------------------------ */
+form.composer{margin-top:2rem;padding:1.5rem;border:1px solid var(--line);
+  background:var(--bg-elev);border-radius:var(--radius)}
+form.composer h2{margin-bottom:1rem}
+.field{margin-bottom:1rem}
+.field label{display:block;font-family:var(--mono);font-size:.7rem;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:.4rem}
+.field input,.field textarea,.field select{width:100%;background:var(--bg);
+  color:var(--ink);border:1px solid var(--line);padding:.7rem .8rem;
+  border-radius:var(--radius);font-family:var(--sans);font-size:.95rem}
+.field textarea{min-height:140px;font-family:var(--serif);line-height:1.5}
+.field input:focus,.field textarea:focus,.field select:focus{
+  outline:0;border-color:var(--accent)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+@media (max-width:600px){.row{grid-template-columns:1fr}}
+
+button,.btn{font-family:var(--mono);font-size:.78rem;letter-spacing:.18em;
+  text-transform:uppercase;background:transparent;color:var(--ink);
+  border:1px solid var(--line);padding:.65rem 1.1rem;border-radius:var(--radius);
+  cursor:pointer;transition:all .15s ease}
+button:hover,.btn:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.primary:hover{filter:brightness(1.1);color:var(--accent-ink)}
+button.ghost{border-color:transparent;color:var(--ink-dim)}
+button.danger{color:var(--danger);border-color:transparent}
+button.danger:hover{border-color:var(--danger);color:var(--danger)}
+
+.toolbar{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:1rem}
+.toolbar .spacer{flex:1}
+
+.mini-row{display:flex;gap:.5rem;margin-bottom:.5rem}
+.mini-row input{flex:1}
+.mini-row button{flex:0}
+
+.thumb-row{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem}
+.thumb-row .thumb{position:relative;width:80px;height:80px;border:1px solid var(--line)}
+.thumb-row .thumb img{width:100%;height:100%;object-fit:cover}
+.thumb-row .thumb button{position:absolute;top:2px;right:2px;padding:0 .35rem;
+  font-size:.7rem;background:var(--bg);border:1px solid var(--line)}
+
+/* Status / empty / banners ---------------------------------------------- */
+.empty{padding:3rem 0;text-align:center;color:var(--ink-faint);font-family:var(--mono);
+  font-size:.85rem;letter-spacing:.1em;text-transform:uppercase}
+.notice{padding:.75rem 1rem;border:1px solid var(--line);border-radius:var(--radius);
+  font-family:var(--mono);font-size:.78rem;color:var(--ink-dim);margin-bottom:1rem}
+.notice.ok{border-color:var(--accent);color:var(--accent)}
+.notice.err{border-color:var(--danger);color:var(--danger)}
+
+.section-tabs{display:flex;gap:.5rem;margin-bottom:1.5rem;flex-wrap:wrap}
+.section-tabs button{flex:0}
+.section-tabs button.active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+/* Login page ------------------------------------------------------------ */
+.center-card{max-width:420px;margin:6rem auto;padding:2rem;
+  border:1px solid var(--line);background:var(--bg-elev);border-radius:var(--radius)}
+.center-card h1{font-size:1.6rem;margin-bottom:.5rem}
+.center-card p{color:var(--ink-dim)}
+
+/* Cursor blink in brand ------------------------------------------------- */
+@keyframes blink{50%{opacity:0}}
+.brand .cursor{display:inline-block;width:.55ch;background:var(--accent);
+  height:1em;vertical-align:-2px;margin-left:2px;animation:blink 1s steps(1) infinite}

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Notes & Reflections · signal.log</title>
+<meta name="description" content="Notes and reflections on market movement and learning." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+<main class="wrap" id="app">
+  <section>
+    <div class="kicker">/02 — notes & reflections</div>
+    <h1>Thinking out loud.</h1>
+    <p class="lede">Longer-form notes on what the tape is saying, what I got wrong, and what I'm learning.</p>
+  </section>
+  <div id="composer-slot"></div>
+  <hr/>
+  <div id="entries"><div class="empty">Loading…</div></div>
+</main>
+
+<script type="module">
+import { supabase, isAdmin } from "./js/supabase.js";
+import { mountChrome, banner, fmtDateTime, escapeHtml, bindImagePicker } from "./js/ui.js";
+
+mountChrome("notes");
+const entriesEl = document.getElementById("entries");
+const composerSlot = document.getElementById("composer-slot");
+
+async function load() {
+  const { data, error } = await supabase.from("notes").select("*").order("created_at",{ascending:false});
+  if (error){ entriesEl.innerHTML = `<div class="notice err">${escapeHtml(error.message)}</div>`; return; }
+  if (!data.length){ entriesEl.innerHTML=`<div class="empty">No notes yet.</div>`; return; }
+  const admin = await isAdmin();
+  entriesEl.innerHTML = data.map(e => render(e, admin)).join("");
+  if (admin) wire();
+}
+function render(e, admin){
+  const tags = (e.tags||[]).map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join("");
+  const imgs = (e.image_urls||[]).map(u=>`<a href="${escapeHtml(u)}" target="_blank"><img loading="lazy" src="${escapeHtml(u)}" alt=""></a>`).join("");
+  return `<article class="entry">
+    <div class="entry-head">
+      <div><div class="meta">${fmtDateTime(e.created_at)}</div><h2>${escapeHtml(e.title)}</h2></div>
+      ${admin?`<button class="danger" data-del="${e.id}">Delete</button>`:""}
+    </div>
+    <div class="body">${escapeHtml(e.body)}</div>
+    ${tags?`<div class="tags">${tags}</div>`:""}
+    ${imgs?`<div class="images">${imgs}</div>`:""}
+  </article>`;
+}
+function wire(){
+  entriesEl.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("Delete this note?"))return;
+    const {error}=await supabase.from("notes").delete().eq("id",b.dataset.del);
+    if(error)return alert(error.message); load();
+  });
+}
+
+async function maybeMountComposer(){
+  if (!(await isAdmin())) return;
+  composerSlot.innerHTML = `
+    <form class="composer" id="f">
+      <h2>New note</h2>
+      <div class="field"><label>Title</label><input id="title" required placeholder="A heading"></div>
+      <div class="field"><label>Reflection</label><textarea id="body" required></textarea></div>
+      <div class="field"><label>Tags (comma separated)</label><input id="tags" placeholder="macro, fed, conviction"></div>
+      <div class="field"><label>Images</label>
+        <input type="file" id="imgs" accept="image/*" multiple>
+        <div class="thumb-row" id="thumbs"></div>
+      </div>
+      <div class="toolbar"><div class="spacer"></div>
+        <button type="button" class="ghost" id="reset">Reset</button>
+        <button type="submit" class="primary">Publish</button>
+      </div>
+    </form>`;
+  const urls=[];
+  bindImagePicker(document.getElementById("imgs"),document.getElementById("thumbs"),urls);
+  document.getElementById("reset").onclick=()=>document.getElementById("f").reset();
+  document.getElementById("f").addEventListener("submit", async(ev)=>{
+    ev.preventDefault();
+    const { data:{user} } = await supabase.auth.getUser();
+    const tags = document.getElementById("tags").value.split(",").map(s=>s.trim()).filter(Boolean);
+    const payload = {
+      title: document.getElementById("title").value.trim(),
+      body:  document.getElementById("body").value.trim(),
+      tags, image_urls: urls,
+      created_by: user?.id, author_email: user?.email
+    };
+    const { error } = await supabase.from("notes").insert(payload);
+    if (error) return banner(document.getElementById("app"), error.message, "err");
+    banner(document.getElementById("app"),"Published","ok");
+    document.getElementById("f").reset(); urls.length=0;
+    document.getElementById("thumbs").innerHTML=""; load();
+  });
+}
+
+await maybeMountComposer(); await load();
+supabase.auth.onAuthStateChange(async()=>{ composerSlot.innerHTML=""; await maybeMountComposer(); load(); });
+</script>
+</body>
+</html>

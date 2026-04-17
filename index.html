@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Daily Logs · signal.log</title>
+<meta name="description" content="Daily market research log: prices, summaries, datapoints, links." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+<main class="wrap" id="app">
+  <section>
+    <div class="kicker">/01 — daily log</div>
+    <h1>Market research, day by day.</h1>
+    <p class="lede">Price points, observations, screenshots, and links — captured as they happen, kept in chronological order.</p>
+  </section>
+
+  <div id="composer-slot"></div>
+  <hr/>
+  <div id="entries"><div class="empty">Loading…</div></div>
+</main>
+
+<script type="module">
+import { supabase, isAdmin } from "./js/supabase.js";
+import { mountChrome, banner, fmtDate, escapeHtml, bindImagePicker } from "./js/ui.js";
+
+mountChrome("logs");
+
+const entriesEl = document.getElementById("entries");
+const composerSlot = document.getElementById("composer-slot");
+
+async function load() {
+  const { data, error } = await supabase
+    .from("daily_logs").select("*").order("log_date",{ascending:false}).order("created_at",{ascending:false});
+  if (error) { entriesEl.innerHTML = `<div class="notice err">${escapeHtml(error.message)}</div>`; return; }
+  if (!data.length) { entriesEl.innerHTML = `<div class="empty">No entries yet.</div>`; return; }
+  const admin = await isAdmin();
+  entriesEl.innerHTML = data.map(e => renderEntry(e, admin)).join("");
+  if (admin) wireDeletes();
+}
+
+function renderEntry(e, admin){
+  const prices = (e.price_points||[]).map(p =>
+    `<div class="price-cell"><span class="lbl">${escapeHtml(p.label||"")}</span><span class="val">${escapeHtml(p.value||"")}</span></div>`
+  ).join("");
+  const links = (e.links||[]).map(l =>
+    `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label||l.url)}</a>`
+  ).join("");
+  const imgs = (e.image_urls||[]).map(u =>
+    `<a href="${escapeHtml(u)}" target="_blank" rel="noopener"><img loading="lazy" src="${escapeHtml(u)}" alt=""></a>`
+  ).join("");
+  return `
+  <article class="entry">
+    <div class="entry-head">
+      <div>
+        <div class="meta">${fmtDate(e.log_date)}</div>
+        <h2>${escapeHtml(e.title)}</h2>
+      </div>
+      ${admin ? `<button class="danger" data-del="${e.id}">Delete</button>`:""}
+    </div>
+    <div class="body">${escapeHtml(e.body)}</div>
+    ${prices ? `<div class="price-grid">${prices}</div>`:""}
+    ${links ? `<div class="linklist">${links}</div>`:""}
+    ${imgs ? `<div class="images">${imgs}</div>`:""}
+  </article>`;
+}
+
+function wireDeletes(){
+  entriesEl.querySelectorAll("[data-del]").forEach(b=>{
+    b.addEventListener("click", async () => {
+      if (!confirm("Delete this entry?")) return;
+      const { error } = await supabase.from("daily_logs").delete().eq("id", b.dataset.del);
+      if (error) return alert(error.message);
+      load();
+    });
+  });
+}
+
+async function maybeMountComposer(){
+  if (!(await isAdmin())) return;
+  composerSlot.innerHTML = `
+    <form class="composer" id="f">
+      <h2>New log entry</h2>
+      <div class="row">
+        <div class="field"><label>Date</label><input type="date" id="log_date" required></div>
+        <div class="field"><label>Title</label><input id="title" placeholder="e.g. CPI print + reaction" required></div>
+      </div>
+      <div class="field"><label>Body / summary of findings</label><textarea id="body" required></textarea></div>
+
+      <div class="field"><label>Price points</label>
+        <div id="prices"></div>
+        <button type="button" class="ghost" id="addPrice">+ add price point</button>
+      </div>
+
+      <div class="field"><label>Links</label>
+        <div id="links"></div>
+        <button type="button" class="ghost" id="addLink">+ add link</button>
+      </div>
+
+      <div class="field"><label>Images (datapoints, charts)</label>
+        <input type="file" id="imgs" accept="image/*" multiple>
+        <div class="thumb-row" id="thumbs"></div>
+      </div>
+
+      <div class="toolbar"><div class="spacer"></div>
+        <button type="button" class="ghost" id="reset">Reset</button>
+        <button type="submit" class="primary">Publish</button>
+      </div>
+    </form>`;
+  document.getElementById("log_date").value = new Date().toISOString().slice(0,10);
+
+  const pricesEl = document.getElementById("prices");
+  const linksEl  = document.getElementById("links");
+  const urls=[];
+  bindImagePicker(document.getElementById("imgs"), document.getElementById("thumbs"), urls);
+
+  const addPriceRow = (label="",value="")=>{
+    const div=document.createElement("div"); div.className="mini-row";
+    div.innerHTML=`<input placeholder="Label (e.g. SPX)" value="${escapeHtml(label)}">
+      <input placeholder="Value (e.g. 5,612.4)" value="${escapeHtml(value)}">
+      <button type="button" class="ghost">×</button>`;
+    div.querySelector("button").onclick=()=>div.remove();
+    pricesEl.appendChild(div);
+  };
+  const addLinkRow=(label="",url="")=>{
+    const div=document.createElement("div"); div.className="mini-row";
+    div.innerHTML=`<input placeholder="Label" value="${escapeHtml(label)}">
+      <input placeholder="https://…" value="${escapeHtml(url)}">
+      <button type="button" class="ghost">×</button>`;
+    div.querySelector("button").onclick=()=>div.remove();
+    linksEl.appendChild(div);
+  };
+  document.getElementById("addPrice").onclick=()=>addPriceRow();
+  document.getElementById("addLink").onclick =()=>addLinkRow();
+  addPriceRow(); addLinkRow();
+
+  document.getElementById("reset").onclick=()=>document.getElementById("f").reset();
+
+  document.getElementById("f").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const price_points=[...pricesEl.querySelectorAll(".mini-row")].map(r=>{
+      const [a,b]=r.querySelectorAll("input"); return {label:a.value.trim(),value:b.value.trim()};
+    }).filter(p=>p.label||p.value);
+    const links=[...linksEl.querySelectorAll(".mini-row")].map(r=>{
+      const [a,b]=r.querySelectorAll("input"); return {label:a.value.trim(),url:b.value.trim()};
+    }).filter(l=>l.url);
+    const { data:{ user } } = await supabase.auth.getUser();
+    const payload = {
+      log_date: document.getElementById("log_date").value,
+      title:    document.getElementById("title").value.trim(),
+      body:     document.getElementById("body").value.trim(),
+      price_points, links, image_urls: urls,
+      created_by: user?.id, author_email: user?.email
+    };
+    const { error } = await supabase.from("daily_logs").insert(payload);
+    if (error) return banner(document.getElementById("app"), error.message, "err");
+    banner(document.getElementById("app"), "Published", "ok");
+    document.getElementById("f").reset(); urls.length=0;
+    pricesEl.innerHTML=""; linksEl.innerHTML=""; addPriceRow(); addLinkRow();
+    document.getElementById("thumbs").innerHTML="";
+    document.getElementById("log_date").value = new Date().toISOString().slice(0,10);
+    load();
+  });
+}
+
+await maybeMountComposer();
+await load();
+supabase.auth.onAuthStateChange(async()=>{ composerSlot.innerHTML=""; await maybeMountComposer(); load(); });
+</script>
+</body>
+</html>
