@@ -12,6 +12,7 @@ create table if not exists public.daily_logs (
   body text not null,
   price_points jsonb default '[]'::jsonb,   -- [{label, value}, ...]
   links jsonb default '[]'::jsonb,          -- [{label, url}, ...]
+  custom_fields jsonb default '[]'::jsonb,  -- [{label, value}, ...]
   image_urls text[] default '{}',
   created_by uuid references auth.users(id) on delete set null,
   author_email text

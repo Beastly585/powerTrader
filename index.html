@@ -49,6 +49,9 @@ function renderEntry(e, admin){
   const links = (e.links||[]).map(l =>
     `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label||l.url)}</a>`
   ).join("");
+  const customs = (e.custom_fields||[]).map(c =>
+    `<div class="price-cell"><span class="lbl">${escapeHtml(c.label||"")}</span><span class="val">${escapeHtml(c.value||"")}</span></div>`
+  ).join("");
   const imgs = (e.image_urls||[]).map(u =>
     `<a href="${escapeHtml(u)}" target="_blank" rel="noopener"><img loading="lazy" src="${escapeHtml(u)}" alt=""></a>`
   ).join("");
@@ -63,6 +66,7 @@ function renderEntry(e, admin){
     </div>
     <div class="body">${escapeHtml(e.body)}</div>
     ${prices ? `<div class="price-grid">${prices}</div>`:""}
+    ${customs ? `<div class="price-grid">${customs}</div>`:""}
     ${links ? `<div class="linklist">${links}</div>`:""}
     ${imgs ? `<div class="images">${imgs}</div>`:""}
   </article>`;
@@ -100,6 +104,11 @@ async function maybeMountComposer(){
         <button type="button" class="ghost" id="addLink">+ add link</button>
       </div>
 
+      <div class="field"><label>Custom data</label>
+        <div id="customs"></div>
+        <button type="button" class="ghost" id="addCustom">+ add custom field</button>
+      </div>
+
       <div class="field"><label>Images (datapoints, charts)</label>
         <input type="file" id="imgs" accept="image/*" multiple>
         <div class="thumb-row" id="thumbs"></div>
@@ -114,6 +123,7 @@ async function maybeMountComposer(){
 
   const pricesEl = document.getElementById("prices");
   const linksEl  = document.getElementById("links");
+  const customsEl = document.getElementById("customs");
   const urls=[];
   bindImagePicker(document.getElementById("imgs"), document.getElementById("thumbs"), urls);
 
@@ -133,9 +143,18 @@ async function maybeMountComposer(){
     div.querySelector("button").onclick=()=>div.remove();
     linksEl.appendChild(div);
   };
+  const addCustomRow=(label="",value="")=>{
+    const div=document.createElement("div"); div.className="mini-row";
+    div.innerHTML=`<input placeholder="Label (e.g. Volume)" value="${escapeHtml(label)}">
+      <input placeholder="Value (e.g. 2.3M)" value="${escapeHtml(value)}">
+      <button type="button" class="ghost">×</button>`;
+    div.querySelector("button").onclick=()=>div.remove();
+    customsEl.appendChild(div);
+  };
   document.getElementById("addPrice").onclick=()=>addPriceRow();
   document.getElementById("addLink").onclick =()=>addLinkRow();
-  addPriceRow(); addLinkRow();
+  document.getElementById("addCustom").onclick=()=>addCustomRow();
+  addPriceRow(); addLinkRow(); addCustomRow();
 
   document.getElementById("reset").onclick=()=>document.getElementById("f").reset();
 
@@ -147,19 +166,23 @@ async function maybeMountComposer(){
     const links=[...linksEl.querySelectorAll(".mini-row")].map(r=>{
       const [a,b]=r.querySelectorAll("input"); return {label:a.value.trim(),url:b.value.trim()};
     }).filter(l=>l.url);
+    const custom_fields=[...customsEl.querySelectorAll(".mini-row")].map(r=>{
+      const [a,b]=r.querySelectorAll("input"); return {label:a.value.trim(),value:b.value.trim()};
+    }).filter(c=>c.label||c.value);
     const { data:{ user } } = await supabase.auth.getUser();
     const payload = {
       log_date: document.getElementById("log_date").value,
       title:    document.getElementById("title").value.trim(),
       body:     document.getElementById("body").value.trim(),
-      price_points, links, image_urls: urls,
+      price_points, links, custom_fields, image_urls: urls,
       created_by: user?.id, author_email: user?.email
     };
     const { error } = await supabase.from("daily_logs").insert(payload);
     if (error) return banner(document.getElementById("app"), error.message, "err");
     banner(document.getElementById("app"), "Published", "ok");
-    document.getElementById("f").reset(); urls.length=0;
-    pricesEl.innerHTML=""; linksEl.innerHTML=""; addPriceRow(); addLinkRow();
+    const form = document.getElementById("f");
+    if (form) form.reset(); urls.length=0;
+    pricesEl.innerHTML=""; linksEl.innerHTML=""; customsEl.innerHTML=""; addPriceRow(); addLinkRow(); addCustomRow();
     document.getElementById("thumbs").innerHTML="";
     document.getElementById("log_date").value = new Date().toISOString().slice(0,10);
     load();
