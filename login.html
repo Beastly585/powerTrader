@@ -37,7 +37,7 @@ document.getElementById("f").addEventListener("submit", async (e) => {
     return;
   }
   const { error } = await supabase.auth.signInWithOtp({
-    email, options: { emailRedirectTo: window.location.origin + "/index.html" }
+    email, options: { emailRedirectTo: window.location.origin + window.location.pathname.replace("login.html", "index.html") }
   });
   if (error) msg.innerHTML = `<div class="notice err">${error.message}</div>`;
   else msg.innerHTML = `<div class="notice ok">Check your inbox for the magic link.</div>`;
