@@ -1,197 +1,90 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Daily Logs · signal.log</title>
-<meta name="description" content="Daily market research log: prices, summaries, datapoints, links." />
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Daily Logs — Market Research</title>
+  <meta name="description" content="Daily market research logs: data points, observations, and sources." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-<main class="wrap" id="app">
-  <section>
-    <div class="kicker">/01 — daily log</div>
-    <h1>Market research, day by day.</h1>
-    <p class="lede">Price points, observations, screenshots, and links — captured as they happen, kept in chronological order.</p>
-  </section>
-
-  <div id="composer-slot"></div>
-  <hr/>
-  <div id="entries"><div class="empty">Loading…</div></div>
-</main>
-
-<script type="module">
-import { supabase, isAdmin } from "./js/supabase.js";
-import { mountChrome, banner, fmtDate, escapeHtml, bindImagePicker } from "./js/ui.js";
-
-mountChrome("logs");
-
-const entriesEl = document.getElementById("entries");
-const composerSlot = document.getElementById("composer-slot");
-
-async function load() {
-  const { data, error } = await supabase
-    .from("daily_logs").select("*").order("log_date",{ascending:false}).order("created_at",{ascending:false});
-  if (error) { entriesEl.innerHTML = `<div class="notice err">${escapeHtml(error.message)}</div>`; return; }
-  if (!data.length) { entriesEl.innerHTML = `<div class="empty">No entries yet.</div>`; return; }
-  const admin = await isAdmin();
-  entriesEl.innerHTML = data.map(e => renderEntry(e, admin)).join("");
-  if (admin) wireDeletes();
-}
-
-function renderEntry(e, admin){
-  const prices = (e.price_points||[]).map(p =>
-    `<div class="price-cell"><span class="lbl">${escapeHtml(p.label||"")}</span><span class="val">${escapeHtml(p.value||"")}</span></div>`
-  ).join("");
-  const links = (e.links||[]).map(l =>
-    `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label||l.url)}</a>`
-  ).join("");
-  const customs = (e.custom_fields||[]).map(c =>
-    `<div class="price-cell"><span class="lbl">${escapeHtml(c.label||"")}</span><span class="val">${escapeHtml(c.value||"")}</span></div>`
-  ).join("");
-  const imgs = (e.image_urls||[]).map(u =>
-    `<a href="${escapeHtml(u)}" target="_blank" rel="noopener"><img loading="lazy" src="${escapeHtml(u)}" alt=""></a>`
-  ).join("");
-  return `
-  <article class="entry">
-    <div class="entry-head">
-      <div>
-        <div class="meta">${fmtDate(e.log_date)}</div>
-        <h2>${escapeHtml(e.title)}</h2>
-      </div>
-      ${admin ? `<button class="danger" data-del="${e.id}">Delete</button>`:""}
+  <header class="site">
+    <div class="inner">
+      <a href="index.html" class="brand">Field<span class="dot">.</span>Notes</a>
+      <nav class="site-nav">
+        <a href="index.html" class="active">Logs</a>
+        <a href="notes.html">Notes</a>
+        <a href="strategies.html">Strategies</a>
+        <button class="theme-toggle" onclick="toggleTheme()">Dark</button>
+      </nav>
     </div>
-    <div class="body">${escapeHtml(e.body)}</div>
-    ${prices ? `<div class="price-grid">${prices}</div>`:""}
-    ${customs ? `<div class="price-grid">${customs}</div>`:""}
-    ${links ? `<div class="linklist">${links}</div>`:""}
-    ${imgs ? `<div class="images">${imgs}</div>`:""}
-  </article>`;
-}
+  </header>
 
-function wireDeletes(){
-  entriesEl.querySelectorAll("[data-del]").forEach(b=>{
-    b.addEventListener("click", async () => {
-      if (!confirm("Delete this entry?")) return;
-      const { error } = await supabase.from("daily_logs").delete().eq("id", b.dataset.del);
-      if (error) return alert(error.message);
-      load();
-    });
-  });
-}
+  <main class="wrap">
+    <div class="page-head">
+      <div class="eyebrow">Daily &middot; Market Research</div>
+      <h1>Field notes from the tape.</h1>
+      <p class="lede">A running log of price points, observations, screenshots, and source links — kept honest by being public.</p>
+    </div>
 
-async function maybeMountComposer(){
-  if (!(await isAdmin())) return;
-  composerSlot.innerHTML = `
-    <form class="composer" id="f">
-      <h2>New log entry</h2>
-      <div class="row">
-        <div class="field"><label>Date</label><input type="date" id="log_date" required></div>
-        <div class="field"><label>Title</label><input id="title" placeholder="e.g. CPI print + reaction" required></div>
-      </div>
-      <div class="field"><label>Body / summary of findings</label><textarea id="body" required></textarea></div>
+    <div id="list"><div class="empty">Loading…</div></div>
+  </main>
 
-      <div class="field"><label>Price points</label>
-        <div id="prices"></div>
-        <button type="button" class="ghost" id="addPrice">+ add price point</button>
-      </div>
+  <footer class="site">© <span id="year"></span> &middot; Field Notes</footer>
 
-      <div class="field"><label>Links</label>
-        <div id="links"></div>
-        <button type="button" class="ghost" id="addLink">+ add link</button>
-      </div>
+  <script>document.getElementById("year").textContent = new Date().getFullYear();</script>
+  <script>
+  function toggleTheme() {
+    const html = document.documentElement;
+    const btn = document.querySelector('.theme-toggle');
+    if (html.getAttribute('data-theme') === 'dark') {
+      html.removeAttribute('data-theme');
+      btn.textContent = 'Dark';
+      localStorage.setItem('theme', 'light');
+    } else {
+      html.setAttribute('data-theme', 'dark');
+      btn.textContent = 'Light';
+      localStorage.setItem('theme', 'dark');
+    }
+  }
+  // Load saved theme
+  (function() {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      document.querySelector('.theme-toggle').textContent = 'Light';
+    }
+  })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    (async () => {
+      const { data, error } = await sb
+        .from("daily_logs")
+        .select("*")
+        .order("entry_date", { ascending: false })
+        .order("created_at", { ascending: false });
 
-      <div class="field"><label>Custom data</label>
-        <div id="customs"></div>
-        <button type="button" class="ghost" id="addCustom">+ add custom field</button>
-      </div>
+      const list = document.getElementById("list");
+      if (error) { list.innerHTML = `<div class="empty">Failed to load: ${UI.escapeHtml(error.message)}</div>`; return; }
+      if (!data || data.length === 0) { list.innerHTML = `<div class="empty">No entries yet.</div>`; return; }
 
-      <div class="field"><label>Images (datapoints, charts)</label>
-        <input type="file" id="imgs" accept="image/*" multiple>
-        <div class="thumb-row" id="thumbs"></div>
-      </div>
-
-      <div class="toolbar"><div class="spacer"></div>
-        <button type="button" class="ghost" id="reset">Reset</button>
-        <button type="submit" class="primary">Publish</button>
-      </div>
-    </form>`;
-  document.getElementById("log_date").value = new Date().toISOString().slice(0,10);
-
-  const pricesEl = document.getElementById("prices");
-  const linksEl  = document.getElementById("links");
-  const customsEl = document.getElementById("customs");
-  const urls=[];
-  bindImagePicker(document.getElementById("imgs"), document.getElementById("thumbs"), urls);
-
-  const addPriceRow = (label="",value="")=>{
-    const div=document.createElement("div"); div.className="mini-row";
-    div.innerHTML=`<input placeholder="Label (e.g. SPX)" value="${escapeHtml(label)}">
-      <input placeholder="Value (e.g. 5,612.4)" value="${escapeHtml(value)}">
-      <button type="button" class="ghost">×</button>`;
-    div.querySelector("button").onclick=()=>div.remove();
-    pricesEl.appendChild(div);
-  };
-  const addLinkRow=(label="",url="")=>{
-    const div=document.createElement("div"); div.className="mini-row";
-    div.innerHTML=`<input placeholder="Label" value="${escapeHtml(label)}">
-      <input placeholder="https://…" value="${escapeHtml(url)}">
-      <button type="button" class="ghost">×</button>`;
-    div.querySelector("button").onclick=()=>div.remove();
-    linksEl.appendChild(div);
-  };
-  const addCustomRow=(label="",value="")=>{
-    const div=document.createElement("div"); div.className="mini-row";
-    div.innerHTML=`<input placeholder="Label (e.g. Volume)" value="${escapeHtml(label)}">
-      <input placeholder="Value (e.g. 2.3M)" value="${escapeHtml(value)}">
-      <button type="button" class="ghost">×</button>`;
-    div.querySelector("button").onclick=()=>div.remove();
-    customsEl.appendChild(div);
-  };
-  document.getElementById("addPrice").onclick=()=>addPriceRow();
-  document.getElementById("addLink").onclick =()=>addLinkRow();
-  document.getElementById("addCustom").onclick=()=>addCustomRow();
-  addPriceRow(); addLinkRow(); addCustomRow();
-
-  document.getElementById("reset").onclick=()=>document.getElementById("f").reset();
-
-  document.getElementById("f").addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const price_points=[...pricesEl.querySelectorAll(".mini-row")].map(r=>{
-      const [a,b]=r.querySelectorAll("input"); return {label:a.value.trim(),value:b.value.trim()};
-    }).filter(p=>p.label||p.value);
-    const links=[...linksEl.querySelectorAll(".mini-row")].map(r=>{
-      const [a,b]=r.querySelectorAll("input"); return {label:a.value.trim(),url:b.value.trim()};
-    }).filter(l=>l.url);
-    const custom_fields=[...customsEl.querySelectorAll(".mini-row")].map(r=>{
-      const [a,b]=r.querySelectorAll("input"); return {label:a.value.trim(),value:b.value.trim()};
-    }).filter(c=>c.label||c.value);
-    const { data:{ user } } = await supabase.auth.getUser();
-    const payload = {
-      log_date: document.getElementById("log_date").value,
-      title:    document.getElementById("title").value.trim(),
-      body:     document.getElementById("body").value.trim(),
-      price_points, links, custom_fields, image_urls: urls,
-      created_by: user?.id, author_email: user?.email
-    };
-    const { error } = await supabase.from("daily_logs").insert(payload);
-    if (error) return banner(document.getElementById("app"), error.message, "err");
-    banner(document.getElementById("app"), "Published", "ok");
-    const form = document.getElementById("f");
-    if (form) form.reset(); urls.length=0;
-    pricesEl.innerHTML=""; linksEl.innerHTML=""; customsEl.innerHTML=""; addPriceRow(); addLinkRow(); addCustomRow();
-    document.getElementById("thumbs").innerHTML="";
-    document.getElementById("log_date").value = new Date().toISOString().slice(0,10);
-    load();
-  });
-}
-
-await maybeMountComposer();
-await load();
-supabase.auth.onAuthStateChange(async()=>{ composerSlot.innerHTML=""; await maybeMountComposer(); load(); });
-</script>
+      list.innerHTML = data.map(e => `
+        <article class="entry">
+          <div class="entry-meta">
+            <span class="date">${UI.fmtDate(e.entry_date)}</span>
+            <span>Log #${UI.escapeHtml(String(e.id).slice(0,4))}</span>
+          </div>
+          <h2>${UI.escapeHtml(e.title)}</h2>
+          ${UI.renderBlocks(e.blocks)}
+        </article>
+      `).join("");
+    })();
+  </script>
 </body>
 </html>

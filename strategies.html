@@ -1,151 +1,101 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Strategies & Snapshots · signal.log</title>
-<meta name="description" content="Trading strategies and weekly/monthly snapshots." />
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Strategies & Snapshots — Market Research</title>
+  <meta name="description" content="Trading strategies and weekly/monthly research snapshots." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-<main class="wrap" id="app">
-  <section>
-    <div class="kicker">/03 — strategies & snapshots</div>
-    <h1>What's working. What's not.</h1>
-    <p class="lede">Trading strategies, plus weekly and monthly summaries that roll up the daily logs.</p>
-  </section>
-
-  <div class="section-tabs" id="tabs">
-    <button data-k="strategy" class="active">Strategies</button>
-    <button data-k="weekly">Weekly</button>
-    <button data-k="monthly">Monthly</button>
-  </div>
-
-  <div id="composer-slot"></div>
-  <hr/>
-  <div id="entries"><div class="empty">Loading…</div></div>
-</main>
-
-<script type="module">
-import { supabase, isAdmin } from "./js/supabase.js";
-import { mountChrome, banner, fmtDate, fmtDateTime, escapeHtml, bindImagePicker } from "./js/ui.js";
-
-mountChrome("strategies");
-let kind = "strategy";
-const entriesEl = document.getElementById("entries");
-const composerSlot = document.getElementById("composer-slot");
-
-document.querySelectorAll("#tabs button").forEach(b=>b.onclick=async()=>{
-  document.querySelectorAll("#tabs button").forEach(x=>x.classList.remove("active"));
-  b.classList.add("active");
-  kind = b.dataset.k;
-  composerSlot.innerHTML = "";
-  await maybeMountComposer();
-  load();
-});
-
-async function suggestSummary(){
-  // Pulls recent daily logs to seed weekly/monthly snapshots.
-  const days = kind === "weekly" ? 7 : 30;
-  const since = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
-  const { data } = await supabase.from("daily_logs").select("log_date,title,body,price_points")
-    .gte("log_date", since).order("log_date",{ascending:true});
-  if (!data || !data.length) return "";
-  const lines = data.map(d => {
-    const prices = (d.price_points||[]).map(p=>`${p.label}: ${p.value}`).join(" · ");
-    return `• ${d.log_date} — ${d.title}${prices?`  [${prices}]`:""}\n  ${d.body.split("\n")[0]}`;
-  });
-  return `Auto-summary of last ${days} days (${data.length} entries):\n\n` + lines.join("\n\n");
-}
-
-async function load() {
-  const { data, error } = await supabase.from("strategies").select("*")
-    .eq("kind", kind).order("created_at",{ascending:false});
-  if (error){ entriesEl.innerHTML = `<div class="notice err">${escapeHtml(error.message)}</div>`; return; }
-  if (!data.length){ entriesEl.innerHTML=`<div class="empty">No ${kind} entries yet.</div>`; return; }
-  const admin = await isAdmin();
-  entriesEl.innerHTML = data.map(e => render(e, admin)).join("");
-  if (admin) wire();
-}
-function render(e, admin){
-  const period = (e.period_start && e.period_end)
-    ? `${fmtDate(e.period_start)} → ${fmtDate(e.period_end)}` : fmtDateTime(e.created_at);
-  const imgs = (e.image_urls||[]).map(u=>`<a href="${escapeHtml(u)}" target="_blank"><img loading="lazy" src="${escapeHtml(u)}" alt=""></a>`).join("");
-  return `<article class="entry">
-    <div class="entry-head">
-      <div><div class="meta">${escapeHtml(e.kind.toUpperCase())} · ${period}</div><h2>${escapeHtml(e.title)}</h2></div>
-      ${admin?`<button class="danger" data-del="${e.id}">Delete</button>`:""}
+  <header class="site">
+    <div class="inner">
+      <a href="index.html" class="brand">Field<span class="dot">.</span>Notes</a>
+      <nav class="site-nav">
+        <a href="index.html">Logs</a>
+        <a href="notes.html">Notes</a>
+        <a href="strategies.html" class="active">Strategies</a>
+        <button class="theme-toggle" onclick="toggleTheme()">Dark</button>
+      </nav>
     </div>
-    <div class="body">${escapeHtml(e.body)}</div>
-    ${imgs?`<div class="images">${imgs}</div>`:""}
-  </article>`;
-}
-function wire(){
-  entriesEl.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
-    if(!confirm("Delete this entry?"))return;
-    const {error}=await supabase.from("strategies").delete().eq("id",b.dataset.del);
-    if(error)return alert(error.message); load();
-  });
-}
+  </header>
 
-async function maybeMountComposer(){
-  if (!(await isAdmin())) return;
-  const showPeriod = kind !== "strategy";
-  const today = new Date().toISOString().slice(0,10);
-  const back  = new Date(Date.now() - (kind==="weekly"?7:30)*86400000).toISOString().slice(0,10);
-  composerSlot.innerHTML = `
-    <form class="composer" id="f">
-      <h2>New ${kind} entry</h2>
-      ${showPeriod ? `<div class="row">
-        <div class="field"><label>Period start</label><input type="date" id="ps" value="${back}"></div>
-        <div class="field"><label>Period end</label><input type="date" id="pe" value="${today}"></div>
-      </div>`:""}
-      <div class="field"><label>Title</label><input id="title" required placeholder="${kind==='strategy'?'e.g. Mean reversion on 2y yields':'e.g. Week of '+today}"></div>
-      <div class="field"><label>Body</label><textarea id="body" required></textarea>
-        ${showPeriod?`<div class="toolbar"><button type="button" class="ghost" id="seed">↻ Seed from daily logs</button></div>`:""}
-      </div>
-      <div class="field"><label>Images</label>
-        <input type="file" id="imgs" accept="image/*" multiple>
-        <div class="thumb-row" id="thumbs"></div>
-      </div>
-      <div class="toolbar"><div class="spacer"></div>
-        <button type="button" class="ghost" id="reset">Reset</button>
-        <button type="submit" class="primary">Publish</button>
-      </div>
-    </form>`;
-  const urls=[];
-  bindImagePicker(document.getElementById("imgs"),document.getElementById("thumbs"),urls);
-  document.getElementById("reset").onclick=()=>document.getElementById("f").reset();
-  document.getElementById("seed")?.addEventListener("click", async ()=>{
-    const text = await suggestSummary();
-    if (!text) return banner(document.getElementById("app"),"No daily logs in range","err");
-    document.getElementById("body").value = text;
-  });
-  document.getElementById("f").addEventListener("submit", async(ev)=>{
-    ev.preventDefault();
-    const { data:{user} } = await supabase.auth.getUser();
-    const payload = {
-      kind,
-      period_start: showPeriod ? document.getElementById("ps").value : null,
-      period_end:   showPeriod ? document.getElementById("pe").value : null,
-      title: document.getElementById("title").value.trim(),
-      body:  document.getElementById("body").value.trim(),
-      image_urls: urls,
-      created_by: user?.id, author_email: user?.email
-    };
-    const { error } = await supabase.from("strategies").insert(payload);
-    if (error) return banner(document.getElementById("app"), error.message, "err");
-    banner(document.getElementById("app"),"Published","ok");
-    document.getElementById("f").reset(); urls.length=0;
-    document.getElementById("thumbs").innerHTML=""; load();
-  });
-}
+  <main class="wrap">
+    <div class="page-head">
+      <div class="eyebrow">Strategies &middot; Snapshots</div>
+      <h1>Patterns worth keeping.</h1>
+      <p class="lede">Strategies I'm developing, plus weekly and monthly synthesis of the daily log.</p>
+    </div>
 
-await maybeMountComposer(); await load();
-supabase.auth.onAuthStateChange(async()=>{ composerSlot.innerHTML=""; await maybeMountComposer(); load(); });
-</script>
+    <div class="tabs" id="tabs">
+      <button data-kind="strategy" class="active">Strategies</button>
+      <button data-kind="weekly">Weekly</button>
+      <button data-kind="monthly">Monthly</button>
+    </div>
+
+    <div id="list"><div class="empty">Loading…</div></div>
+  </main>
+
+  <footer class="site">© <span id="year"></span> &middot; Field Notes</footer>
+
+  <script>document.getElementById("year").textContent = new Date().getFullYear();</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    let currentKind = "strategy";
+
+    async function load() {
+      const { data, error } = await sb.from("strategies").select("*").eq("kind", currentKind).order("created_at", { ascending: false });
+      const list = document.getElementById("list");
+      if (error) { list.innerHTML = `<div class="empty">Failed to load: ${UI.escapeHtml(error.message)}</div>`; return; }
+      if (!data || data.length === 0) { list.innerHTML = `<div class="empty">No ${currentKind === "strategy" ? "strategies" : currentKind + " snapshots"} yet.</div>`; return; }
+      list.innerHTML = data.map(s => {
+        const period = (s.period_start || s.period_end)
+          ? `${UI.fmtDateShort(s.period_start)} – ${UI.fmtDateShort(s.period_end)}`
+          : UI.fmtDate(s.created_at);
+        return `<article class="snapshot">
+          <div class="period">${UI.escapeHtml(period)}</div>
+          <h2>${UI.escapeHtml(s.title)}</h2>
+          <div class="body" style="white-space:pre-wrap">${UI.escapeHtml(s.body)}</div>
+        </article>`;
+      }).join("");
+    }
+
+    document.getElementById("tabs").addEventListener("click", (e) => {
+      const btn = e.target.closest("button"); if (!btn) return;
+      document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentKind = btn.dataset.kind;
+      load();
+    });
+
+    load();
+  </script>
+  <script>
+  function toggleTheme() {
+    const html = document.documentElement;
+    const btn = document.querySelector('.theme-toggle');
+    if (html.getAttribute('data-theme') === 'dark') {
+      html.removeAttribute('data-theme');
+      btn.textContent = 'Dark';
+      localStorage.setItem('theme', 'light');
+    } else {
+      html.setAttribute('data-theme', 'dark');
+      btn.textContent = 'Light';
+      localStorage.setItem('theme', 'dark');
+    }
+  }
+  (function() {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      document.querySelector('.theme-toggle').textContent = 'Light';
+    }
+  })();
+  </script>
 </body>
 </html>

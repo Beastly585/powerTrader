@@ -1,109 +1,105 @@
--- =========================================================================
+-- ============================================================
 -- Market Research Journal — Supabase setup
--- Run this entire file in: Supabase Dashboard -> SQL Editor -> New Query
--- =========================================================================
+-- Run this ENTIRE file in Supabase → SQL Editor → New query
+-- WARNING: This DROPS existing tables and all data. Fresh start.
+-- ============================================================
 
--- 1. Tables ---------------------------------------------------------------
-create table if not exists public.daily_logs (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now(),
-  log_date date not null default current_date,
-  title text not null,
-  body text not null,
-  price_points jsonb default '[]'::jsonb,   -- [{label, value}, ...]
-  links jsonb default '[]'::jsonb,          -- [{label, url}, ...]
-  custom_fields jsonb default '[]'::jsonb,  -- [{label, value}, ...]
-  image_urls text[] default '{}',
-  created_by uuid references auth.users(id) on delete set null,
-  author_email text
+-- ---------- 1. EXTENSIONS ----------
+create extension if not exists "pgcrypto";
+
+-- ---------- 2. DROP EXISTING ----------
+-- Skip bucket drop (will use ON CONFLICT in insert below)
+
+-- Drop tables (CASCADE removes dependent policies automatically)
+drop table if exists public.daily_logs cascade;
+drop table if exists public.notes cascade;
+drop table if exists public.strategies cascade;
+
+-- ---------- 3. CREATE TABLES ----------
+
+-- Daily logs table
+-- Columns: id, entry_date, title, blocks, created_at
+create table public.daily_logs (
+  id          uuid primary key default gen_random_uuid(),
+  entry_date  date not null default current_date,
+  title       text not null,
+  blocks      jsonb not null default '[]'::jsonb,
+  created_at  timestamptz not null default now()
 );
 
-create table if not exists public.notes (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now(),
-  title text not null,
-  body text not null,
-  tags text[] default '{}',
-  image_urls text[] default '{}',
-  created_by uuid references auth.users(id) on delete set null,
-  author_email text
+-- Notes table
+-- Columns: id, title, body, created_at
+create table public.notes (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null,
+  body        text not null,
+  created_at  timestamptz not null default now()
 );
 
-create table if not exists public.strategies (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now(),
-  kind text not null check (kind in ('strategy','weekly','monthly')),
+-- Strategies table
+-- Columns: id, kind, title, body, period_start, period_end, created_at
+create table public.strategies (
+  id          uuid primary key default gen_random_uuid(),
+  kind        text not null check (kind in ('strategy','weekly','monthly')),
+  title       text not null,
+  body        text not null,
   period_start date,
-  period_end date,
-  title text not null,
-  body text not null,
-  image_urls text[] default '{}',
-  created_by uuid references auth.users(id) on delete set null,
-  author_email text
+  period_end   date,
+  created_at  timestamptz not null default now()
 );
 
-create index if not exists idx_daily_logs_date on public.daily_logs (log_date desc);
-create index if not exists idx_notes_created on public.notes (created_at desc);
-create index if not exists idx_strategies_kind on public.strategies (kind, created_at desc);
+-- ---------- 4. CREATE INDEXES ----------
+create index daily_logs_entry_date_idx on public.daily_logs (entry_date desc);
+create index daily_logs_created_at_idx on public.daily_logs (created_at desc);
+create index notes_created_at_idx on public.notes (created_at desc);
+create index strategies_kind_created_idx on public.strategies (kind, created_at desc);
 
--- 2. Row Level Security ---------------------------------------------------
+-- ---------- 5. ROW LEVEL SECURITY ----------
 alter table public.daily_logs enable row level security;
 alter table public.notes      enable row level security;
 alter table public.strategies enable row level security;
 
--- Public read
-drop policy if exists "public read logs"      on public.daily_logs;
-drop policy if exists "public read notes"     on public.notes;
-drop policy if exists "public read strategies" on public.strategies;
-create policy "public read logs"       on public.daily_logs for select using (true);
-create policy "public read notes"      on public.notes      for select using (true);
-create policy "public read strategies" on public.strategies for select using (true);
+-- Public read policies (anyone can read)
+create policy "public_read_daily_logs"   on public.daily_logs  for select using (true);
+create policy "public_read_notes"        on public.notes       for select using (true);
+create policy "public_read_strategies"   on public.strategies  for select using (true);
 
--- Admin-only write (single hardcoded admin email)
--- IMPORTANT: change the email below if your admin changes.
-drop policy if exists "admin write logs"       on public.daily_logs;
-drop policy if exists "admin write notes"      on public.notes;
-drop policy if exists "admin write strategies" on public.strategies;
+-- Anonymous write policies (no auth required for insert/update/delete)
+create policy "anon_insert_daily_logs"   on public.daily_logs  for insert to anon with check (true);
+create policy "anon_update_daily_logs"   on public.daily_logs  for update to anon using (true) with check (true);
+create policy "anon_delete_daily_logs"   on public.daily_logs  for delete to anon using (true);
 
-create policy "admin write logs" on public.daily_logs
-  for all to authenticated
-  using (auth.jwt() ->> 'email' = '7withak@gmail.com')
-  with check (auth.jwt() ->> 'email' = '7withak@gmail.com');
+create policy "anon_insert_notes"        on public.notes       for insert to anon with check (true);
+create policy "anon_update_notes"        on public.notes       for update to anon using (true) with check (true);
+create policy "anon_delete_notes"        on public.notes       for delete to anon using (true);
 
-create policy "admin write notes" on public.notes
-  for all to authenticated
-  using (auth.jwt() ->> 'email' = '7withak@gmail.com')
-  with check (auth.jwt() ->> 'email' = '7withak@gmail.com');
+create policy "anon_insert_strategies"   on public.strategies  for insert to anon with check (true);
+create policy "anon_update_strategies"   on public.strategies  for update to anon using (true) with check (true);
+create policy "anon_delete_strategies"   on public.strategies  for delete to anon using (true);
 
-create policy "admin write strategies" on public.strategies
-  for all to authenticated
-  using (auth.jwt() ->> 'email' = '7withak@gmail.com')
-  with check (auth.jwt() ->> 'email' = '7withak@gmail.com');
+-- ---------- 6. STORAGE (image uploads) ----------
+-- Create public bucket for images
+insert into storage.buckets (id, name, public) 
+values ('log-images', 'log-images', true)
+on conflict (id) do nothing;
 
--- 3. Storage bucket for images -------------------------------------------
-insert into storage.buckets (id, name, public)
-  values ('log-images', 'log-images', true)
-  on conflict (id) do nothing;
+-- Storage policies for anonymous access
+drop policy if exists "storage_read_log_images"   on storage.objects;
+drop policy if exists "storage_insert_log_images" on storage.objects;
+drop policy if exists "storage_delete_log_images" on storage.objects;
 
-drop policy if exists "public read images"  on storage.objects;
-drop policy if exists "admin upload images" on storage.objects;
-drop policy if exists "admin update images" on storage.objects;
-drop policy if exists "admin delete images" on storage.objects;
+create policy "storage_read_log_images"
+  on storage.objects for select
+  using (bucket_id = 'log-images');
 
-create policy "public read images" on storage.objects
-  for select using (bucket_id = 'log-images');
+create policy "storage_insert_log_images"
+  on storage.objects for insert
+  to anon
+  with check (bucket_id = 'log-images');
 
-create policy "admin upload images" on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'log-images' and auth.jwt() ->> 'email' = '7withak@gmail.com');
+create policy "storage_delete_log_images"
+  on storage.objects for delete
+  to anon
+  using (bucket_id = 'log-images');
 
-create policy "admin update images" on storage.objects
-  for update to authenticated
-  using (bucket_id = 'log-images' and auth.jwt() ->> 'email' = '7withak@gmail.com');
-
-create policy "admin delete images" on storage.objects
-  for delete to authenticated
-  using (bucket_id = 'log-images' and auth.jwt() ->> 'email' = '7withak@gmail.com');
-
--- 4. Done. In Supabase: Authentication -> Providers -> Email -> ensure
---    "Email" is enabled and "Confirm email" works for magic links.
+-- Done.

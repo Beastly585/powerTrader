@@ -1,73 +1,74 @@
-# signal.log — vanilla static market-research journal
+# Field Notes — Market Research Journal
 
-Three pages backed by Supabase. Public read, single-admin write
-(`7withak@gmail.com`). Hosts cleanly on GitHub Pages — no build step.
+A static, vanilla HTML/CSS/JS site backed by Supabase. Designed for GitHub Pages.
 
-## 1. One-time Supabase setup
+## Files
 
-1. In your Supabase project, open **SQL Editor → New query**.
-2. Paste the entire contents of [`SETUP.sql`](./SETUP.sql) and click **Run**.
-   This creates the tables, RLS policies, and the `log-images` storage bucket.
-3. Open **Authentication → Providers → Email**: confirm the **Email** provider
-   is enabled. Magic links are on by default.
-4. Open **Authentication → URL Configuration**:
-   - **Site URL** → your GitHub Pages URL, e.g. `https://USER.github.io/REPO/`
-   - **Redirect URLs** → add the same URL plus `http://localhost:5500/` if you
-     plan to preview locally.
+```
+index.html              ← Public: daily logs (read-only)
+notes.html              ← Public: notes & reflections (read-only)
+strategies.html         ← Public: strategies + weekly/monthly snapshots (read-only)
+admin-lEqo0dka.html     ← SECRET: composer for all three. Single page, three tabs.
 
-## 2. Deploy to GitHub Pages
+css/styles.css          ← Design system ("Quiet Terminal")
+js/supabase.js          ← Supabase client init (public anon key)
+js/ui.js                ← Shared rendering / toast helpers
+js/admin.js             ← Admin composer logic (only loaded by the secret page)
 
-1. Create a repo and copy every file in this folder into it (keeping paths).
-2. Push to `main`.
-3. **Settings → Pages → Source = `main` / root**. Wait for the green check.
-4. Visit `https://USER.github.io/REPO/`.
+SETUP.sql               ← Run this once in Supabase → SQL Editor
+```
 
-## 3. Local preview (optional)
+## One-time setup
 
-Any static server works. Easiest:
+1. Open your Supabase project → **SQL Editor → New query**.
+2. Paste the entire contents of `SETUP.sql` and run it.
+3. That creates the three tables, RLS policies, and the public `log-images` storage bucket.
+
+## Local preview
+
+Just open `index.html` in a browser — everything is static. For a closer-to-prod feel:
 
 ```bash
-npx serve .
-# or
-python3 -m http.server 5500
+python3 -m http.server 8000
+# then visit http://localhost:8000
 ```
 
-Then open `http://localhost:5500/`. (Don't open the HTML files directly with
-`file://` — ES modules and Supabase auth need an HTTP origin.)
+## Admin URL — IMPORTANT
 
-## 4. How to use
-
-- **Public visitors** see all logs, notes, and strategies. No login UI shown.
-- **Admin** (`7withak@gmail.com`) clicks **Admin login** in the footer, gets a
-  magic link, and after returning sees the composer forms inline on each page.
-- Image uploads land in the `log-images` storage bucket and are inserted into
-  the entry as public URLs.
-- The Strategies page has tabs: **Strategies** (timeless), **Weekly**,
-  **Monthly**. Weekly/Monthly composers have a **Seed from daily logs** button
-  that auto-pastes a summary of the last 7/30 days of daily logs.
-
-## 5. File layout
+Your admin composer is at:
 
 ```
-index.html         Daily logs (home)
-notes.html         Notes & reflections
-strategies.html    Strategies + weekly/monthly snapshots
-login.html         Magic-link sign-in
-css/styles.css     Design system ("Quiet Terminal")
-js/supabase.js     Supabase client + admin email constant
-js/ui.js           Header/footer chrome, image upload, helpers
-SETUP.sql          One-shot DB + RLS + storage setup
+admin-lEqo0dka.html
 ```
 
-## 6. Changing the admin
+This URL is your only protection. **The site has no login.** RLS allows anonymous writes
+because that was the chosen security model. Consequences:
 
-If you ever change emails:
-1. Edit `ADMIN_EMAIL` in `js/supabase.js`.
-2. Edit the four `'7withak@gmail.com'` strings in `SETUP.sql` and re-run the
-   policy `create` blocks (or `alter policy`).
+- Don't share the URL.
+- Don't paste it in chats or screenshots.
+- Be aware browser history / autocomplete may surface it.
+- If it ever leaks, do BOTH:
+  1. Rename the file to `admin-<new-random-slug>.html` (and bookmark the new one).
+  2. Optionally tighten `SETUP.sql` to require auth, then re-run it.
 
-## 7. Security notes
+## Flexible entry blocks
 
-- The anon key in `js/supabase.js` is **public-safe** — every Supabase web app
-  ships it. Your data is protected by the RLS policies installed in step 1.
-- Never put the `service_role` key in this repo.
+Each daily log is a title + date + an ordered list of **blocks**. Each block has:
+- `type` — `text`, `image`, or `link`
+- `label` — your own label, e.g. "BTC price", "FT article", "screenshot"
+- `value` — the content (text, URL, or image URL — uploads go to the `log-images` bucket)
+
+Add as many blocks per entry as you want, in any order.
+
+## Deploying to GitHub Pages
+
+1. Create a new GitHub repo and push these files to the root.
+2. Repo → **Settings → Pages → Deploy from branch → main / root**.
+3. Done. Your site lives at `https://<you>.github.io/<repo>/`.
+   Admin: `https://<you>.github.io/<repo>/admin-lEqo0dka.html`
+
+## Changing the admin slug later
+
+1. Rename `admin-lEqo0dka.html` to `admin-<new-slug>.html`.
+2. Update the link in `README.md`.
+3. Commit + push. Old URL 404s instantly.

@@ -1,111 +1,68 @@
-// Shared UI helpers: nav highlight, header, footer, banner, image upload, formatting.
-import { supabase, isAdmin, IMAGE_BUCKET, ADMIN_EMAIL } from "./supabase.js";
+// Shared UI helpers used by all public pages.
 
-export function mountChrome(activePage) {
-  const header = document.createElement("header");
-  header.className = "site";
-  header.innerHTML = `
-    <a class="brand" href="index.html">SIGNAL<span class="dot">.</span>LOG<span class="cursor"></span></a>
-    <nav class="site">
-      <a href="index.html"      data-p="logs">Logs</a>
-      <a href="notes.html"      data-p="notes">Notes</a>
-      <a href="strategies.html" data-p="strategies">Strategies</a>
-    </nav>`;
-  document.body.prepend(header);
-  header.querySelectorAll("nav.site a").forEach(a => {
-    if (a.dataset.p === activePage) a.classList.add("active");
-  });
-
-  const footer = document.createElement("footer");
-  footer.className = "site";
-  footer.innerHTML = `
-    <span>// signal.log — market research journal</span>
-    <span id="auth-slot"><a href="login.html">Admin login</a></span>`;
-  document.body.appendChild(footer);
-
-  refreshAuthSlot();
-  supabase.auth.onAuthStateChange(() => refreshAuthSlot());
+// ---------- Date / format ----------
+function fmtDate(d) {
+  if (!d) return "";
+  const date = typeof d === "string" ? new Date(d + (d.length === 10 ? "T00:00:00" : "")) : d;
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
+function fmtDateShort(d) {
+  if (!d) return "";
+  const date = typeof d === "string" ? new Date(d + (d.length === 10 ? "T00:00:00" : "")) : d;
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-async function refreshAuthSlot() {
-  const slot = document.getElementById("auth-slot");
-  if (!slot) return;
-  const admin = await isAdmin();
-  if (admin) {
-    slot.innerHTML = `<span>${ADMIN_EMAIL}</span> · <a href="#" id="logout-link">Sign out</a>`;
-    document.getElementById("logout-link")?.addEventListener("click", async (e) => {
-      e.preventDefault();
-      await supabase.auth.signOut();
-      location.reload();
-    });
-  } else {
-    slot.innerHTML = `<a href="login.html">Admin login</a>`;
+// ---------- Block rendering ----------
+function renderBlocks(blocks) {
+  if (!Array.isArray(blocks) || blocks.length === 0) return "";
+  return `<div class="blocks">${blocks.map(renderBlock).join("")}</div>`;
+}
+function renderBlock(b) {
+  const label = escapeHtml(b.label || "");
+  if (b.type === "image") {
+    const url = escapeHtml(b.value || "");
+    if (!url) return "";
+    return `<div class="block image">
+      <div class="label">${label}</div>
+      <div class="value"><img src="${url}" alt="${label}" loading="lazy" /></div>
+    </div>`;
   }
-}
-
-export function banner(parent, text, kind="ok") {
-  const div = document.createElement("div");
-  div.className = `notice ${kind}`;
-  div.textContent = text;
-  parent.prepend(div);
-  setTimeout(() => div.remove(), 4500);
-}
-
-export function fmtDate(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { year:"numeric", month:"short", day:"numeric" });
-}
-export function fmtDateTime(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
-}
-
-export function escapeHtml(s) {
-  return (s ?? "").toString()
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-}
-
-// Upload one file to storage, return public URL.
-export async function uploadImage(file) {
-  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-  const path = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
-  const { error } = await supabase.storage.from(IMAGE_BUCKET).upload(path, file, {
-    cacheControl: "3600", upsert: false, contentType: file.type || undefined
-  });
-  if (error) throw error;
-  const { data } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
-}
-
-// Wires a file input + preview row. Mutates `urls` array (in/out).
-export function bindImagePicker(fileInput, thumbRow, urls, onChange) {
-  function render() {
-    thumbRow.innerHTML = "";
-    urls.forEach((u, i) => {
-      const t = document.createElement("div");
-      t.className = "thumb";
-      t.innerHTML = `<img src="${escapeHtml(u)}" alt=""><button type="button" title="Remove">×</button>`;
-      t.querySelector("button").addEventListener("click", () => {
-        urls.splice(i,1); render(); onChange?.();
-      });
-      thumbRow.appendChild(t);
-    });
+  if (b.type === "link") {
+    const url = escapeHtml(b.value || "");
+    if (!url) return "";
+    let display = url;
+    try { display = new URL(url).hostname.replace(/^www\./, "") + new URL(url).pathname; } catch {}
+    return `<div class="block link">
+      <div class="label">${label}</div>
+      <div class="value"><a href="${url}" target="_blank" rel="noopener noreferrer">${escapeHtml(display)} &nearr;</a></div>
+    </div>`;
   }
-  fileInput.addEventListener("change", async (e) => {
-    const files = Array.from(e.target.files || []);
-    for (const f of files) {
-      try {
-        const url = await uploadImage(f);
-        urls.push(url);
-        render(); onChange?.();
-      } catch (err) {
-        alert("Upload failed: " + err.message);
-      }
-    }
-    fileInput.value = "";
-  });
-  render();
+  // text
+  const paragraphs = String(b.value || "").split(/\n\n+/).map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`).join("");
+  return `<div class="block text">
+    <div class="label">${label}</div>
+    <div class="value">${paragraphs}</div>
+  </div>`;
 }
+
+// ---------- Toast ----------
+function toast(msg, kind) {
+  let el = document.querySelector(".toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "toast";
+    document.body.appendChild(el);
+  }
+  el.className = "toast" + (kind === "error" ? " error" : "");
+  el.textContent = msg;
+  requestAnimationFrame(() => el.classList.add("show"));
+  clearTimeout(window.__toastT);
+  window.__toastT = setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+window.UI = { fmtDate, fmtDateShort, escapeHtml, renderBlocks, renderBlock, toast };
