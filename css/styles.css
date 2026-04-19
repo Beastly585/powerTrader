@@ -44,7 +44,7 @@
 
 /* ----- Reset & Base ----- */
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); transition: background 0.2s, color 0.2s; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); transition: background 0.2s, color 0.2s; overflow-x: hidden; }
 body {
   font-family: var(--serif);
   font-size: 18px;
@@ -75,13 +75,16 @@ a:hover { text-decoration-color: var(--accent); color: var(--accent); }
 }
 
 /* ----- Layout ----- */
-.wrap { max-width: var(--maxw); margin: 0 auto; padding: 64px 24px 120px; }
-.wrap-wide { max-width: var(--maxw-wide); margin: 0 auto; padding: 48px 24px 120px; }
+.wrap { 
+  max-width: var(--maxw); margin: 0 auto; 
+  padding: 0 24px 120px; /* top padding removed - header is sticky */
+}
+.wrap-wide { max-width: var(--maxw-wide); margin: 0 auto; padding: 0 24px 120px; }
 
 header.site {
   border-bottom: 1px solid var(--line);
   background: var(--bg);
-  position: sticky; top: 0; z-index: 10;
+  position: sticky; top: 0; z-index: 100;
 }
 header.site .inner {
   max-width: var(--maxw-wide); margin: 0 auto; padding: 18px 24px;
@@ -92,6 +95,8 @@ header.site .inner {
   font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--ink); text-decoration: none;
   font-weight: 700;
+  border: solid 1px var(--line); 
+  padding: 8px 14px;
 }
 .brand .dot { color: var(--accent); }
 nav.site-nav { display: flex; gap: 22px; align-items: center; }
@@ -103,7 +108,7 @@ nav.site-nav a.active { color: var(--ink); font-weight: 600; }
 nav.site-nav a:hover { color: var(--accent); }
 
 /* ----- Page heading ----- */
-.page-head { margin-bottom: 56px; }
+.page-head { padding-top: 48px; margin-bottom: 32px; }
 .page-head .eyebrow {
   font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
   text-transform: uppercase; color: var(--accent); margin-bottom: 16px;
@@ -122,11 +127,16 @@ nav.site-nav a:hover { color: var(--accent); }
 /* ----- Entries with month indicator ----- */
 .entries-container {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 140px); /* header + footer space */
+  min-height: 400px;
 }
 
 #list {
-  max-height: 80vh;
+  flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--line-soft) transparent;
 }
@@ -136,8 +146,8 @@ nav.site-nav a:hover { color: var(--accent); }
 #list::-webkit-scrollbar-thumb { background: var(--line-soft); }
 
 .month-indicator {
-  position: fixed;
-  right: 24px;
+  position: sticky;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
   background: var(--ink);
@@ -150,6 +160,8 @@ nav.site-nav a:hover { color: var(--accent); }
   transition: opacity 0.2s;
   pointer-events: none;
   z-index: 10;
+  align-self: flex-end;
+  margin-right: 8px;
 }
 
 .month-indicator.visible {
@@ -230,6 +242,24 @@ article.entry:last-of-type { border-bottom: 1px solid var(--line); }
     text-align: left; border-right: none;
     border-bottom: 1px solid var(--line-soft);
     padding: 0 0 6px; padding-top: 0;
+  }
+  /* Mobile scrolling fix */
+  .entries-container {
+    height: calc(100vh - 180px);
+    min-height: 300px;
+  }
+  .month-indicator {
+    right: 8px;
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+  /* Prevent horizontal scroll */
+  body {
+    overflow-x: hidden;
+  }
+  .wrap, .wrap-wide {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 }
 
@@ -441,10 +471,10 @@ button.btn.danger:hover { background: var(--danger); color: var(--bg); }
 .toast.error { border-color: var(--danger); color: var(--danger); }
 
 footer.site {
-  border-top: 1px solid var(--line); padding: 32px 24px;
+  border-top: 1px solid var(--line); padding: 24px;
   font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
   text-transform: uppercase; color: var(--ink-faint); text-align: center;
-}
+  position: sticky; bottom: 0; background: var(--bg);
 }
 .block-row .row-top {
   display: grid; grid-template-columns: 30px 1fr; gap: 12px;
@@ -557,7 +587,8 @@ footer.site {
 .toast.error { border-color: var(--danger); color: var(--danger); }
 
 footer.site {
-  border-top: 1px solid var(--line); padding: 32px 24px;
+  border-top: 1px solid var(--line); padding: 24px;
   font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
   text-transform: uppercase; color: var(--ink-faint); text-align: center;
+  position: sticky; bottom: 0; background: var(--bg);
 }
