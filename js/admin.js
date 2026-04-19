@@ -24,41 +24,99 @@
   // default to today
   logDate.value = new Date().toISOString().slice(0, 10);
 
-  function makeBlockRow(b = { type: "text", label: "", value: "" }) {
+  // Don't auto-populate on load - user clicks Reset to get defaults
+
+  function makeBlockRow(b = { type: "text", label: "", value: "", caption: "" }) {
     const row = document.createElement("div");
     row.className = "block-row";
     row.dataset.type = b.type;
+    row.draggable = true;
     row.innerHTML = `
       <div class="row-top">
+        <input type="text" class="b-label" placeholder="Label (e.g. Summary, Weather, Prediction)" value="${UI.escapeHtml(b.label)}" />
+        <span class="drag-handle" title="Drag to reorder">☰</span>
+      </div>
+      <div class="b-content"></div>
+      <div class="row-bottom">
         <select class="b-type">
           <option value="text"  ${b.type==="text"?"selected":""}>Text</option>
           <option value="image" ${b.type==="image"?"selected":""}>Image</option>
           <option value="link"  ${b.type==="link"?"selected":""}>Link</option>
         </select>
-        <input type="text" class="b-label" placeholder="Label (e.g. BTC price, source, screenshot)" value="${UI.escapeHtml(b.label)}" />
         <button type="button" class="remove">Remove</button>
       </div>
-      <div class="b-content"></div>
     `;
     builder.appendChild(row);
     renderBlockContent(row, b);
 
+    // Drag events
+    row.addEventListener("dragstart", handleDragStart);
+    row.addEventListener("dragover", handleDragOver);
+    row.addEventListener("drop", handleDrop);
+    row.addEventListener("dragend", handleDragEnd);
+
     row.querySelector(".remove").addEventListener("click", () => row.remove());
     row.querySelector(".b-type").addEventListener("change", (e) => {
       row.dataset.type = e.target.value;
-      renderBlockContent(row, { type: e.target.value, label: row.querySelector(".b-label").value, value: "" });
+      renderBlockContent(row, { type: e.target.value, label: row.querySelector(".b-label").value, value: "", caption: "" });
     });
+  }
+
+  // ---------- Drag & Drop ----------
+  let dragSrcEl = null;
+
+  function handleDragStart(e) {
+    dragSrcEl = this;
+    this.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleDragOver(e) {
+    if (e.preventDefault) e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    return false;
+  }
+
+  function handleDrop(e) {
+    if (e.stopPropagation) e.stopPropagation();
+    if (dragSrcEl !== this) {
+      const allRows = [...builder.querySelectorAll(".block-row")];
+      const srcIdx = allRows.indexOf(dragSrcEl);
+      const tgtIdx = allRows.indexOf(this);
+      if (srcIdx < tgtIdx) {
+        this.parentNode.insertBefore(dragSrcEl, this.nextSibling);
+      } else {
+        this.parentNode.insertBefore(dragSrcEl, this);
+      }
+    }
+    return false;
+  }
+
+  function handleDragEnd() {
+    this.classList.remove("dragging");
+    builder.querySelectorAll(".block-row").forEach(r => r.classList.remove("dragging"));
   }
 
   function renderBlockContent(row, b) {
     const c = row.querySelector(".b-content");
     if (b.type === "text") {
-      c.innerHTML = `<textarea class="b-value" rows="4" placeholder="Write…">${UI.escapeHtml(b.value || "")}</textarea>`;
+      c.innerHTML = `
+        <div class="b-value" contenteditable="true" data-placeholder="Write…" style="min-height:100px;background:var(--bg);color:var(--ink);border:1px solid var(--line);padding:12px;font-family:var(--serif);font-size:16px;line-height:1.6;outline:none">${UI.escapeHtml(b.value || "")}</div>
+        <div class="b-hint" style="font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin-top:4px">Cmd+B bold · Cmd+I italic · Cmd+U underline</div>
+      `;
+      const ed = c.querySelector(".b-value");
+      ed.addEventListener("keydown", (e) => {
+        if ((e.metaKey || e.ctrlKey) && "biu".includes(e.key.toLowerCase())) {
+          e.preventDefault();
+          document.execCommand(e.key.toLowerCase() === "b" ? "bold" : e.key.toLowerCase() === "i" ? "italic" : "underline", false, null);
+        }
+      });
     } else if (b.type === "link") {
       c.innerHTML = `<input type="url" class="b-value" placeholder="https://…" value="${UI.escapeHtml(b.value || "")}" />`;
     } else if (b.type === "image") {
       c.innerHTML = `
         <input type="url" class="b-value" placeholder="Image URL — or upload below" value="${UI.escapeHtml(b.value || "")}" />
+        <input type="text" class="b-caption" placeholder="Caption (optional)" value="${UI.escapeHtml(b.caption || "")}" style="margin-top:8px;width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);padding:8px 10px;font-family:var(--serif);font-size:14px" />
         <div style="margin-top:8px;display:flex;gap:10px;align-items:center">
           <input type="file" class="b-file" accept="image/*" />
           <span class="b-status" style="font-family:var(--mono);font-size:11px;color:var(--ink-faint)"></span>
@@ -87,8 +145,9 @@
     return [...builder.querySelectorAll(".block-row")].map(row => ({
       type:  row.querySelector(".b-type").value,
       label: row.querySelector(".b-label").value.trim(),
-      value: row.querySelector(".b-value").value.trim(),
-    })).filter(b => b.value);
+      value: row.querySelector(".b-value").innerHTML.trim(),
+      caption: row.querySelector(".b-caption")?.value.trim() || "",
+    })).filter(b => b.value && b.value !== "<br>");
   }
 
   function resetLogForm() {
@@ -97,6 +156,10 @@
     logDate.value = new Date().toISOString().slice(0, 10);
     logTitle.value = "";
     builder.innerHTML = "";
+    // Add default blocks for new entries: Summary, Weather, Prediction
+    makeBlockRow({ type: "text", label: "Summary", value: "" });
+    makeBlockRow({ type: "image", label: "Weather", value: "", caption: "" });
+    makeBlockRow({ type: "text", label: "Prediction", value: "" });
   }
 
   addBar.addEventListener("click", (e) => {
@@ -159,15 +222,23 @@
   const noteTitle = document.getElementById("note-title");
   const noteBody  = document.getElementById("note-body");
 
+  // Cmd+B/I/U for notes
+  noteBody.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && "biu".includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      document.execCommand(e.key.toLowerCase() === "b" ? "bold" : e.key.toLowerCase() === "i" ? "italic" : "underline", false, null);
+    }
+  });
+
   function resetNoteForm() {
     editingNoteId = null;
     document.getElementById("note-form-title").textContent = "New note";
-    noteTitle.value = ""; noteBody.value = "";
+    noteTitle.value = ""; noteBody.innerHTML = "";
   }
   document.getElementById("note-reset").addEventListener("click", resetNoteForm);
   document.getElementById("note-save").addEventListener("click", async () => {
-    const title = noteTitle.value.trim(); const body = noteBody.value.trim();
-    if (!title || !body) return UI.toast("Title and body required", "error");
+    const title = noteTitle.value.trim(); const body = noteBody.innerHTML.trim();
+    if (!title || !body || body === "<br>") return UI.toast("Title and body required", "error");
     const payload = { title, body };
     let res;
     if (editingNoteId) res = await sb.from("notes").update(payload).eq("id", editingNoteId);
@@ -200,7 +271,7 @@
       if (error) return UI.toast(error.message, "error");
       editingNoteId = data.id;
       document.getElementById("note-form-title").textContent = "Editing note";
-      noteTitle.value = data.title; noteBody.value = data.body;
+      noteTitle.value = data.title; noteBody.innerHTML = data.body;
       window.scrollTo({ top: 0, behavior: "smooth" });
     }));
   }
@@ -213,18 +284,26 @@
   const stratStart = document.getElementById("strat-start");
   const stratEnd   = document.getElementById("strat-end");
 
+  // Cmd+B/I/U for strategies
+  stratBody.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && "biu".includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      document.execCommand(e.key.toLowerCase() === "b" ? "bold" : e.key.toLowerCase() === "i" ? "italic" : "underline", false, null);
+    }
+  });
+
   function resetStratForm() {
     editingStratId = null;
     document.getElementById("strat-form-title").textContent = "New strategy or snapshot";
     stratKind.value = "strategy";
-    stratTitle.value = ""; stratBody.value = "";
+    stratTitle.value = ""; stratBody.innerHTML = "";
     stratStart.value = ""; stratEnd.value = "";
   }
   document.getElementById("strat-reset").addEventListener("click", resetStratForm);
 
   document.getElementById("strat-save").addEventListener("click", async () => {
-    const title = stratTitle.value.trim(); const body = stratBody.value.trim();
-    if (!title || !body) return UI.toast("Title and body required", "error");
+    const title = stratTitle.value.trim(); const body = stratBody.innerHTML.trim();
+    if (!title || !body || body === "<br>") return UI.toast("Title and body required", "error");
     const payload = {
       kind: stratKind.value, title, body,
       period_start: stratStart.value || null,
@@ -249,7 +328,8 @@
       const blocks = (l.blocks || []).map(b => `  - [${b.label || b.type}] ${b.type === "image" ? "(image)" : b.value}`).join("\n");
       return `### ${UI.fmtDateShort(l.entry_date)} — ${l.title}\n${blocks}`;
     }).join("\n\n");
-    stratBody.value = (stratBody.value ? stratBody.value + "\n\n" : "") + seed;
+    const existing = stratBody.innerHTML.trim();
+    stratBody.innerHTML = existing ? existing + "<br><br>" + seed : seed;
     UI.toast(`Seeded ${data.length} log${data.length===1?"":"s"}`);
   });
 
@@ -279,7 +359,7 @@
       if (error) return UI.toast(error.message, "error");
       editingStratId = data.id;
       document.getElementById("strat-form-title").textContent = "Editing entry";
-      stratKind.value = data.kind; stratTitle.value = data.title; stratBody.value = data.body;
+      stratKind.value = data.kind; stratTitle.value = data.title; stratBody.innerHTML = data.body;
       stratStart.value = data.period_start || ""; stratEnd.value = data.period_end || "";
       window.scrollTo({ top: 0, behavior: "smooth" });
     }));

@@ -27,9 +27,10 @@ function renderBlock(b) {
   if (b.type === "image") {
     const url = escapeHtml(b.value || "");
     if (!url) return "";
+    const caption = b.caption ? `<div class="caption">${escapeHtml(b.caption)}</div>` : "";
     return `<div class="block image">
       <div class="label">${label}</div>
-      <div class="value"><img src="${url}" alt="${label}" loading="lazy" /></div>
+      <div class="value"><img src="${url}" alt="${label}" loading="lazy" />${caption}</div>
     </div>`;
   }
   if (b.type === "link") {
@@ -42,11 +43,11 @@ function renderBlock(b) {
       <div class="value"><a href="${url}" target="_blank" rel="noopener noreferrer">${escapeHtml(display)} &nearr;</a></div>
     </div>`;
   }
-  // text
-  const paragraphs = String(b.value || "").split(/\n\n+/).map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`).join("");
+  // text block — render HTML (bold/italic/underline from contenteditable)
+  const value = b.value || "";
   return `<div class="block text">
     <div class="label">${label}</div>
-    <div class="value">${paragraphs}</div>
+    <div class="value">${value}</div>
   </div>`;
 }
 

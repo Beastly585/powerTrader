@@ -49,7 +49,7 @@
         <article class="note">
           <div class="entry-meta"><span class="date">${UI.fmtDate(n.created_at)}</span></div>
           <h2>${UI.escapeHtml(n.title)}</h2>
-          <div class="body">${UI.escapeHtml(n.body)}</div>
+          <div class="body">${n.body}</div>
         </article>
       `).join("");
     })();

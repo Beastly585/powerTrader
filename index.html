@@ -30,7 +30,10 @@
       <p class="lede">A running log of price points and observations, compiled daily. Will patterns emerge?</p>
     </div>
 
-    <div id="list"><div class="empty">Loading…</div></div>
+    <div class="entries-container">
+      <div id="list"><div class="empty">Loading…</div></div>
+      <div class="month-indicator" id="month-indicator"></div>
+    </div>
   </main>
 
   <footer class="site">© <span id="year"></span> &middot; Kevin Maresca - future energy trader</footer>
@@ -74,16 +77,56 @@
       if (error) { list.innerHTML = `<div class="empty">Failed to load: ${UI.escapeHtml(error.message)}</div>`; return; }
       if (!data || data.length === 0) { list.innerHTML = `<div class="empty">No entries yet.</div>`; return; }
 
-      list.innerHTML = data.map(e => `
-        <article class="entry">
-          <div class="entry-meta">
-            <span class="date">${UI.fmtDate(e.entry_date)}</span>
-            <span>Log #${UI.escapeHtml(String(e.id).slice(0,4))}</span>
-          </div>
-          <h2>${UI.escapeHtml(e.title)}</h2>
-          ${UI.renderBlocks(e.blocks)}
-        </article>
-      `).join("");
+      list.innerHTML = data.map((e) => {
+        const blocks = UI.renderBlocks(e.blocks);
+        return `
+          <article class="entry" data-date="${e.entry_date}">
+            <div class="entry-body">
+              <div class="entry-meta">
+                <span class="date">${UI.fmtDate(e.entry_date)}</span>
+                <span>Log #${UI.escapeHtml(String(e.id).slice(0,4))}</span>
+              </div>
+              <h2>${UI.escapeHtml(e.title)}</h2>
+              ${blocks}
+            </div>
+          </article>
+        `;
+      }).join("");
+
+      // Month indicator on scroll
+      const indicator = document.getElementById("month-indicator");
+      const entries = list.querySelectorAll(".entry");
+      
+      function updateMonthIndicator() {
+        const container = list;
+        const containerTop = container.scrollTop;
+        const containerHeight = container.clientHeight;
+        const centerY = containerTop + containerHeight / 2;
+        
+        let closestEntry = null;
+        let closestDist = Infinity;
+        
+        entries.forEach(entry => {
+          const rect = entry.getBoundingClientRect();
+          const entryTop = entry.offsetTop;
+          const dist = Math.abs((entryTop + rect.height / 2) - centerY);
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestEntry = entry;
+          }
+        });
+        
+        if (closestEntry) {
+          const dateStr = closestEntry.dataset.date;
+          const date = new Date(dateStr + "T00:00:00");
+          const monthYear = date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+          indicator.textContent = monthYear;
+          indicator.classList.add("visible");
+        }
+      }
+
+      list.addEventListener("scroll", updateMonthIndicator);
+      updateMonthIndicator(); // Initial call
     })();
   </script>
 </body>

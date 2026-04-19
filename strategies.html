@@ -60,7 +60,7 @@
         return `<article class="snapshot">
           <div class="period">${UI.escapeHtml(period)}</div>
           <h2>${UI.escapeHtml(s.title)}</h2>
-          <div class="body" style="white-space:pre-wrap">${UI.escapeHtml(s.body)}</div>
+          <div class="body" style="white-space:pre-wrap">${s.body}</div>
         </article>`;
       }).join("");
     }
