@@ -124,49 +124,14 @@ nav.site-nav a:hover { color: var(--accent); }
   font-size: 17px;
 }
 
-/* ----- Entries with month indicator ----- */
-.entries-container {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 140px); /* header + footer space */
-  min-height: 400px;
-}
-
+/* ----- Entries ----- */
 #list {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-soft) transparent;
+  display: flex; flex-direction: column; gap: 0;
 }
 
 #list::-webkit-scrollbar { width: 6px; }
 #list::-webkit-scrollbar-track { background: transparent; }
 #list::-webkit-scrollbar-thumb { background: var(--line-soft); }
-
-.month-indicator {
-  position: sticky;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--ink);
-  color: var(--bg);
-  padding: 8px 14px;
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  opacity: 0;
-  transition: opacity 0.2s;
-  pointer-events: none;
-  z-index: 10;
-  align-self: flex-end;
-  margin-right: 8px;
-}
-
-.month-indicator.visible {
-  opacity: 1;
-}
 
 .entry {
   border-top: 1px solid var(--line);
@@ -244,15 +209,6 @@ article.entry:last-of-type { border-bottom: 1px solid var(--line); }
     padding: 0 0 6px; padding-top: 0;
   }
   /* Mobile scrolling fix */
-  .entries-container {
-    height: calc(100vh - 180px);
-    min-height: 300px;
-  }
-  .month-indicator {
-    right: 8px;
-    font-size: 11px;
-    padding: 6px 10px;
-  }
   /* Prevent horizontal scroll */
   body {
     overflow-x: hidden;
@@ -260,6 +216,30 @@ article.entry:last-of-type { border-bottom: 1px solid var(--line); }
   .wrap, .wrap-wide {
     padding-left: 16px;
     padding-right: 16px;
+  }
+  /* Mobile header: brand on top, nav sticky below */
+  header.site .inner {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  nav.site-nav {
+    position: sticky;
+    top: 60px;
+    background: var(--bg);
+    width: 100%;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+    z-index: 99;
+  }
+  .page-head {
+    padding-top: 80px;
+  }
+  
+  .brand, .site-nav {
+    margin: auto;
+    justify-content: center;
+    align-items: center;
   }
 }
 

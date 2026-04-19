@@ -30,10 +30,7 @@
       <p class="lede">A running log of price points and observations, compiled daily. Will patterns emerge?</p>
     </div>
 
-    <div class="entries-container">
-      <div id="list"><div class="empty">Loading…</div></div>
-      <div class="month-indicator" id="month-indicator"></div>
-    </div>
+    <div id="list"><div class="empty">Loading…</div></div>
   </main>
 
   <footer class="site">© <span id="year"></span> &middot; Kevin Maresca - future energy trader</footer>
@@ -92,41 +89,6 @@
           </article>
         `;
       }).join("");
-
-      // Month indicator on scroll
-      const indicator = document.getElementById("month-indicator");
-      const entries = list.querySelectorAll(".entry");
-      
-      function updateMonthIndicator() {
-        const container = list;
-        const containerTop = container.scrollTop;
-        const containerHeight = container.clientHeight;
-        const centerY = containerTop + containerHeight / 2;
-        
-        let closestEntry = null;
-        let closestDist = Infinity;
-        
-        entries.forEach(entry => {
-          const rect = entry.getBoundingClientRect();
-          const entryTop = entry.offsetTop;
-          const dist = Math.abs((entryTop + rect.height / 2) - centerY);
-          if (dist < closestDist) {
-            closestDist = dist;
-            closestEntry = entry;
-          }
-        });
-        
-        if (closestEntry) {
-          const dateStr = closestEntry.dataset.date;
-          const date = new Date(dateStr + "T00:00:00");
-          const monthYear = date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
-          indicator.textContent = monthYear;
-          indicator.classList.add("visible");
-        }
-      }
-
-      list.addEventListener("scroll", updateMonthIndicator);
-      updateMonthIndicator(); // Initial call
     })();
   </script>
 </body>
