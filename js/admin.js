@@ -27,6 +27,7 @@
   // Don't auto-populate on load - user clicks Reset to get defaults
 
   function makeBlockRow(b = { type: "text", label: "", value: "", caption: "" }) {
+    if (!b || typeof b !== "object") b = { type: "text", label: "", value: "", caption: "" };
     const row = document.createElement("div");
     row.className = "block-row";
     row.dataset.type = b.type;
@@ -34,7 +35,7 @@
     row.innerHTML = `
       <div class="row-top">
         <input type="text" class="b-label" placeholder="Label (e.g. Summary, Weather, Prediction)" value="${UI.escapeHtml(b.label)}" />
-        <span class="drag-handle" title="Drag to reorder">☰</span>
+        <span class="drag-handle" title="Drag to reorder">⠿</span>
       </div>
       <div class="b-content"></div>
       <div class="row-bottom">
@@ -100,11 +101,50 @@
   function renderBlockContent(row, b) {
     const c = row.querySelector(".b-content");
     if (b.type === "text") {
+      // Don't escape HTML — text blocks contain rich text from contenteditable
       c.innerHTML = `
-        <div class="b-value" contenteditable="true" data-placeholder="Write…" style="min-height:100px;background:var(--bg);color:var(--ink);border:1px solid var(--line);padding:12px;font-family:var(--serif);font-size:16px;line-height:1.6;outline:none">${UI.escapeHtml(b.value || "")}</div>
+        <div class="b-value" contenteditable="true" data-placeholder="Write…" style="min-height:100px;background:var(--bg);color:var(--ink);border:1px solid var(--line);padding:12px;font-family:var(--serif);font-size:16px;line-height:1.6;outline:none">${b.value || ""}</div>
         <div class="b-hint" style="font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin-top:4px">Cmd+B bold · Cmd+I italic · Cmd+U underline</div>
       `;
       const ed = c.querySelector(".b-value");
+      // Handle paste for images
+      ed.addEventListener("paste", async (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+          if (item.type.startsWith("image/")) {
+            e.preventDefault();
+            const file = item.getAsFile();
+            if (!file) continue;
+            const status = document.createElement("span");
+            status.style.cssText = "font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-left:8px";
+            status.textContent = "uploading…";
+            ed.after(status);
+            const ext = (file.name.split(".").pop() || "png").toLowerCase();
+            const path = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+            const { error } = await sb.storage.from("log-images").upload(path, file, { contentType: file.type, upsert: false });
+            if (error) { status.textContent = "upload failed"; UI.toast("Image upload failed", "error"); return; }
+            const { data } = sb.storage.from("log-images").getPublicUrl(path);
+            const img = document.createElement("img");
+            img.src = data.publicUrl;
+            img.style.maxWidth = "100%";
+            img.style.display = "block";
+            img.style.margin = "8px 0";
+            const sel = window.getSelection();
+            if (sel.rangeCount) {
+              const range = sel.getRangeAt(0);
+              range.deleteContents();
+              range.insertNode(img);
+              range.collapse(false);
+            } else {
+              ed.appendChild(img);
+            }
+            status.textContent = "uploaded ✓";
+            setTimeout(() => status.remove(), 2000);
+            return;
+          }
+        }
+      });
       ed.addEventListener("keydown", (e) => {
         if ((e.metaKey || e.ctrlKey) && "biu".includes(e.key.toLowerCase())) {
           e.preventDefault();
@@ -145,7 +185,9 @@
     return [...builder.querySelectorAll(".block-row")].map(row => ({
       type:  row.querySelector(".b-type").value,
       label: row.querySelector(".b-label").value.trim(),
-      value: row.querySelector(".b-value").innerHTML.trim(),
+      value: row.dataset.type === "text" 
+        ? row.querySelector(".b-value").innerHTML.trim() 
+        : row.querySelector(".b-value").value.trim(),
       caption: row.querySelector(".b-caption")?.value.trim() || "",
     })).filter(b => b.value && b.value !== "<br>");
   }
@@ -212,7 +254,7 @@
       logDate.value = data.entry_date;
       logTitle.value = data.title;
       builder.innerHTML = "";
-      (data.blocks || []).forEach(makeBlockRow);
+      (data.blocks || []).filter(b => b && b.type).forEach(makeBlockRow);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }));
   }
@@ -227,6 +269,45 @@
     if ((e.metaKey || e.ctrlKey) && "biu".includes(e.key.toLowerCase())) {
       e.preventDefault();
       document.execCommand(e.key.toLowerCase() === "b" ? "bold" : e.key.toLowerCase() === "i" ? "italic" : "underline", false, null);
+    }
+  });
+
+  // Handle paste for images in notes
+  noteBody.addEventListener("paste", async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const status = document.createElement("span");
+        status.style.cssText = "font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-left:8px";
+        status.textContent = "uploading…";
+        noteBody.after(status);
+        const ext = (file.name.split(".").pop() || "png").toLowerCase();
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+        const { error } = await sb.storage.from("log-images").upload(path, file, { contentType: file.type, upsert: false });
+        if (error) { status.textContent = "upload failed"; UI.toast("Image upload failed", "error"); return; }
+        const { data } = sb.storage.from("log-images").getPublicUrl(path);
+        const img = document.createElement("img");
+        img.src = data.publicUrl;
+        img.style.maxWidth = "100%";
+        img.style.display = "block";
+        img.style.margin = "8px 0";
+        const sel = window.getSelection();
+        if (sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(img);
+          range.collapse(false);
+        } else {
+          noteBody.appendChild(img);
+        }
+        status.textContent = "uploaded ✓";
+        setTimeout(() => status.remove(), 2000);
+        return;
+      }
     }
   });
 
@@ -289,6 +370,45 @@
     if ((e.metaKey || e.ctrlKey) && "biu".includes(e.key.toLowerCase())) {
       e.preventDefault();
       document.execCommand(e.key.toLowerCase() === "b" ? "bold" : e.key.toLowerCase() === "i" ? "italic" : "underline", false, null);
+    }
+  });
+
+  // Handle paste for images in strategies
+  stratBody.addEventListener("paste", async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const status = document.createElement("span");
+        status.style.cssText = "font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-left:8px";
+        status.textContent = "uploading…";
+        stratBody.after(status);
+        const ext = (file.name.split(".").pop() || "png").toLowerCase();
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+        const { error } = await sb.storage.from("log-images").upload(path, file, { contentType: file.type, upsert: false });
+        if (error) { status.textContent = "upload failed"; UI.toast("Image upload failed", "error"); return; }
+        const { data } = sb.storage.from("log-images").getPublicUrl(path);
+        const img = document.createElement("img");
+        img.src = data.publicUrl;
+        img.style.maxWidth = "100%";
+        img.style.display = "block";
+        img.style.margin = "8px 0";
+        const sel = window.getSelection();
+        if (sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(img);
+          range.collapse(false);
+        } else {
+          stratBody.appendChild(img);
+        }
+        status.textContent = "uploaded ✓";
+        setTimeout(() => status.remove(), 2000);
+        return;
+      }
     }
   });
 

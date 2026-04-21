@@ -19,8 +19,8 @@
   --danger: #c43c3c;
   --ok: #2a7a2a;
   --radius: 0px;
-  --maxw: 760px;
-  --maxw-wide: 1080px;
+  --maxw: 900px;
+  --maxw-wide: 1400px;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --serif: "Newsreader", "Iowan Old Style", Georgia, serif;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -343,15 +343,18 @@ button.btn.danger:hover { background: var(--danger); color: var(--bg); }
 }
 .block-row.dragging { opacity: 0.5; }
 .block-row .row-top {
-  display: grid; grid-template-columns: 1fr 30px; gap: 12px;
+  display: grid; grid-template-columns: 1fr 24px; gap: 8px;
   margin-bottom: 12px; align-items: center;
 }
 .block-row .drag-handle {
-  font-size: 18px; cursor: grab; color: var(--ink-dim);
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: grab; color: var(--ink-dim);
   user-select: none;
-  text-align: right;
+  border: 1px solid var(--line-soft);
+  background: var(--bg);
 }
-.block-row .drag-handle:hover { color: var(--ink); }
+.block-row .drag-handle:hover { color: var(--ink); border-color: var(--ink); }
 .block-row .b-label {
   background: var(--bg); color: var(--ink); border: 1px solid var(--line-soft);
   padding: 10px 12px; font-family: var(--mono); font-size: 13px;
@@ -457,17 +460,21 @@ footer.site {
   position: sticky; bottom: 0; background: var(--bg);
 }
 .block-row .row-top {
-  display: grid; grid-template-columns: 30px 1fr; gap: 12px;
+  display: grid; grid-template-columns: 1fr 24px; gap: 8px;
   margin-bottom: 12px; align-items: center;
 }
 .block-row .row-bottom {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;
 }
 .block-row .drag-handle {
-  font-size: 18px; cursor: grab; color: var(--ink-dim);
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: grab; color: var(--ink-dim);
   user-select: none;
+  border: 1px solid var(--line);
+  background: var(--bg);
 }
-.block-row .drag-handle:hover { color: var(--ink); }
+.block-row .drag-handle:hover { color: var(--ink); border-color: var(--ink); }
 .block-row .b-label {
   background: var(--bg); color: var(--ink); border: 1px solid var(--line);
   padding: 10px 12px; font-family: var(--mono); font-size: 13px;

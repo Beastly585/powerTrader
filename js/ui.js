@@ -23,6 +23,7 @@ function renderBlocks(blocks) {
   return `<div class="blocks">${blocks.map(renderBlock).join("")}</div>`;
 }
 function renderBlock(b) {
+  if (!b || typeof b !== "object") return "";
   const label = escapeHtml(b.label || "");
   if (b.type === "image") {
     const url = escapeHtml(b.value || "");
