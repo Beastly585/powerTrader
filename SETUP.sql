@@ -24,6 +24,7 @@ create table public.daily_logs (
   entry_date  date not null default current_date,
   title       text not null,
   blocks      jsonb not null default '[]'::jsonb,
+  tags        jsonb not null default '[]'::jsonb,
   created_at  timestamptz not null default now()
 );
 

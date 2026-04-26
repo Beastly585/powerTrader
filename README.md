@@ -24,6 +24,12 @@ SETUP.sql               ← Run this once in Supabase → SQL Editor
 2. Paste the entire contents of `SETUP.sql` and run it.
 3. That creates the three tables, RLS policies, and the public `log-images` storage bucket.
 
+> If you already have live data, do not rerun `SETUP.sql` as it drops and recreates tables. Instead add the new optional `tags` field with:
+>
+> ```sql
+> alter table public.daily_logs add column if not exists tags jsonb default '[]'::jsonb;
+> ```
+
 ## Local preview
 
 Just open `index.html` in a browser — everything is static. For a closer-to-prod feel:

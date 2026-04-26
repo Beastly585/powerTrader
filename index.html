@@ -23,15 +23,50 @@
     </div>
   </header>
 
-  <main class="wrap">
+  <main class="wrap logs-dashboard">
     <div class="page-head">
       <div class="eyebrow">Daily &middot; Market Research</div>
       <h1>Market Watch Journal.</h1>
       <p class="lede">A running log of price points and observations, compiled daily. Will patterns emerge?</p>
     </div>
 
-    <div id="list"><div class="empty">Loading…</div></div>
+    <section class="log-filters" aria-label="Filter entries">
+      <div class="filter-head">
+        <strong>Filters</strong>
+        <button type="button" class="btn ghost" id="toggle-filters">Collapse</button>
+      </div>
+      <div id="filters-body">
+        <div class="filter-row">
+          <div class="filter-label">Filter by tags</div>
+          <div class="filter-tags" id="filter-tags"></div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-label" for="keyword-filter">Keyword</label>
+          <input id="keyword-filter" type="search" placeholder="Search title, blocks, labels…" />
+          <button type="button" class="btn ghost" id="clear-filters">Clear filters</button>
+        </div>
+        <div class="filter-row">
+          <label class="filter-label" for="sort-filter">Sort</label>
+          <select id="sort-filter">
+            <option value="date_desc">Newest first</option>
+            <option value="date_asc">Oldest first</option>
+            <option value="title_asc">Title A-Z</option>
+          </select>
+          <label class="filter-inline-check"><input type="checkbox" id="structured-only" /> Only entries with populated structured analysis</label>
+        </div>
+      </div>
+    </section>
+
+    <div id="list" class="dashboard-list"><div class="empty">Loading…</div></div>
   </main>
+
+  <div class="image-modal" id="image-modal" aria-hidden="true">
+    <div class="image-modal-dialog" role="dialog" aria-modal="true" aria-label="Expanded image preview">
+      <button type="button" class="image-modal-close" id="image-modal-close" aria-label="Close image preview">Close</button>
+      <img id="image-modal-img" alt="" />
+      <div class="image-modal-meta" id="image-modal-meta"></div>
+    </div>
+  </div>
 
   <footer class="site">© <span id="year"></span> &middot; Kevin Maresca - future energy trader</footer>
 
@@ -64,31 +99,271 @@
   <script src="js/ui.js"></script>
   <script>
     (async () => {
+      const FILTER_TAGS = ["low solar", "high solar", "low wind", "high wind", "high demand", "high price"];
+      const TAG_THEME_CLASS = {
+        "low solar": "solar-low",
+        "high solar": "solar",
+        "low wind": "wind-low",
+        "high wind": "wind",
+        "high demand": "demand",
+        "high price": "price"
+      };
+      const activeTags = new Set();
+      let keyword = "";
+      const list = document.getElementById("list");
+      const filterTags = document.getElementById("filter-tags");
+      const keywordInput = document.getElementById("keyword-filter");
+      const clearBtn = document.getElementById("clear-filters");
+      const sortFilter = document.getElementById("sort-filter");
+      const structuredOnlyInput = document.getElementById("structured-only");
+      const toggleFiltersBtn = document.getElementById("toggle-filters");
+      const filtersBody = document.getElementById("filters-body");
+      const imageModal = document.getElementById("image-modal");
+      const imageModalImg = document.getElementById("image-modal-img");
+      const imageModalMeta = document.getElementById("image-modal-meta");
+      const imageModalClose = document.getElementById("image-modal-close");
+
+      function stripHtml(value) {
+        return String(value || "").replace(/<[^>]*>/g, " ");
+      }
+
+      function normalize(value) {
+        return String(value || "").toLowerCase().trim();
+      }
+
+      function getSearchText(entry) {
+        const blockText = (Array.isArray(entry.blocks) ? entry.blocks : []).map((b) => {
+          const label = b?.label || "";
+          const value = b?.type === "text" ? stripHtml(b?.value) : String(b?.value || "");
+          const caption = b?.caption || "";
+          return `${label} ${value} ${caption}`;
+        }).join(" ");
+        return normalize(`${entry.title || ""} ${blockText} ${(entry.tags || []).join(" ")}`);
+      }
+
+      function matchesFilters(entry) {
+        const entryTags = new Set((Array.isArray(entry.tags) ? entry.tags : []).map(normalize));
+        const tagsMatch = activeTags.size === 0 || [...activeTags].every((tag) => entryTags.has(tag));
+        if (!tagsMatch) return false;
+        if (structuredOnlyInput.checked && !hasStructuredContent(entry)) return false;
+        if (!keyword) return true;
+        return getSearchText(entry).includes(keyword);
+      }
+
+      function hasStructuredContent(entry) {
+        const blocks = Array.isArray(entry.blocks) ? entry.blocks : [];
+        return blocks.some((b) => {
+          const normalizedLabel = normalize(b?.label);
+          if (!["system lambda", "congestion pricing"].includes(normalizedLabel)) return false;
+          let parsed = null;
+          try { parsed = typeof b?.value === "string" ? JSON.parse(b.value) : b?.value; } catch { parsed = null; }
+          if (!parsed || !Array.isArray(parsed.timeslots)) return false;
+          return parsed.timeslots.some((slot) => {
+            if (normalizedLabel === "system lambda") {
+              return normalize(slot?.price) || normalize(slot?.note) || (slot?.time === "custom" && normalize(slot?.customTime));
+            }
+            const hubs = Object.values(slot?.hubs || {});
+            return hubs.some((hub) => normalize(hub?.price) || normalize(hub?.note) || (hub?.thesisRating && hub.thesisRating !== "accurate"));
+          });
+        });
+      }
+
+      function renderTagFilters() {
+        filterTags.innerHTML = FILTER_TAGS.map((tag) => {
+          const selected = activeTags.has(tag);
+          const colorClass = TAG_THEME_CLASS[tag] || "";
+          return `<button type="button" class="tag-pill filter-tag ${colorClass} ${selected ? "active" : ""}" data-tag="${UI.escapeHtml(tag)}">${UI.escapeHtml(tag)}</button>`;
+        }).join("");
+      }
+
+      function escapeRegExp(value) {
+        return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      function highlightKeywordInNode(root, rawTerm) {
+        const term = normalize(rawTerm);
+        if (!term) return;
+        const regex = new RegExp(`(${escapeRegExp(term)})`, "ig");
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+            const parent = node.parentElement;
+            if (!parent) return NodeFilter.FILTER_REJECT;
+            if (parent.closest("script,style,mark")) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
+        const textNodes = [];
+        while (walker.nextNode()) textNodes.push(walker.currentNode);
+        textNodes.forEach((textNode) => {
+          const text = textNode.nodeValue;
+          if (!regex.test(text)) return;
+          regex.lastIndex = 0;
+          const frag = document.createDocumentFragment();
+          let lastIndex = 0;
+          text.replace(regex, (match, _g1, offset) => {
+            if (offset > lastIndex) {
+              frag.appendChild(document.createTextNode(text.slice(lastIndex, offset)));
+            }
+            const mark = document.createElement("mark");
+            mark.className = "keyword-hit";
+            mark.textContent = match;
+            frag.appendChild(mark);
+            lastIndex = offset + match.length;
+            return match;
+          });
+          if (lastIndex < text.length) frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+          textNode.parentNode.replaceChild(frag, textNode);
+        });
+      }
+
+      function renderEntries(entries) {
+        if (!entries.length) {
+          list.innerHTML = `<div class="empty">No entries match your filters.</div>`;
+          return;
+        }
+        list.innerHTML = entries.map((e) => {
+          const blocks = UI.renderBlocks(e.blocks);
+          const tags = Array.isArray(e.tags) ? e.tags.map(tag => `<span class="tag-pill">${UI.escapeHtml(tag)}</span>`).join("") : "";
+          const tagLine = tags ? `<div class="entry-tags">${tags}</div>` : "";
+          return `
+            <article class="entry dashboard-entry" data-date="${e.entry_date}">
+              <div class="entry-body dashboard-entry-body">
+                <div class="entry-meta">
+                  <span class="date">${UI.fmtDate(e.entry_date)}</span>
+                  <span>Log #${UI.escapeHtml(String(e.id).slice(0,4))}</span>
+                </div>
+                <h2>${UI.escapeHtml(e.title)}</h2>
+                ${tagLine}
+                ${blocks}
+              </div>
+            </article>
+          `;
+        }).join("");
+        if (keyword) {
+          list.querySelectorAll(".dashboard-entry").forEach((entryEl) => {
+            highlightKeywordInNode(entryEl, keyword);
+          });
+        }
+        wireStructuredComparisons();
+      }
+
+      function wireStructuredComparisons() {
+        list.querySelectorAll(".entry-section").forEach((sectionEl) => {
+          const lambdaButtons = sectionEl.querySelectorAll(".lambda-slot-btn");
+          const congestionGroups = sectionEl.querySelectorAll(".structured-group[data-slot-key]");
+          if (!lambdaButtons.length || !congestionGroups.length) return;
+          const activate = (slotKey) => {
+            lambdaButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.slotKey === slotKey));
+            congestionGroups.forEach((group) => group.classList.toggle("active", group.dataset.slotKey === slotKey));
+          };
+          const initial = lambdaButtons[0]?.dataset.slotKey;
+          if (initial) activate(initial);
+          lambdaButtons.forEach((btn) => {
+            btn.addEventListener("click", () => activate(btn.dataset.slotKey));
+          });
+        });
+      }
+
+      function applyFilters(entries) {
+        const filtered = entries.filter(matchesFilters);
+        const sortMode = sortFilter.value;
+        filtered.sort((a, b) => {
+          if (sortMode === "date_asc") return String(a.entry_date).localeCompare(String(b.entry_date));
+          if (sortMode === "title_asc") return String(a.title || "").localeCompare(String(b.title || ""));
+          return String(b.entry_date).localeCompare(String(a.entry_date));
+        });
+        renderEntries(filtered);
+      }
+
+      function openImageModal(imgEl) {
+        const fullSrc = imgEl.dataset.fullSrc || imgEl.src;
+        const label = imgEl.dataset.label || "";
+        const caption = imgEl.dataset.caption || "";
+        imageModalImg.src = fullSrc;
+        imageModalImg.alt = label;
+        imageModalMeta.innerHTML = `
+          ${label ? `<div class="modal-image-label">${UI.escapeHtml(label)}</div>` : ""}
+          ${caption ? `<div class="modal-image-caption">${UI.escapeHtml(caption)}</div>` : ""}
+        `;
+        imageModal.classList.add("open");
+        imageModal.setAttribute("aria-hidden", "false");
+      }
+
+      function closeImageModal() {
+        imageModal.classList.remove("open");
+        imageModal.setAttribute("aria-hidden", "true");
+        imageModalImg.src = "";
+        imageModalMeta.innerHTML = "";
+      }
+
       const { data, error } = await sb
         .from("daily_logs")
         .select("*")
         .order("entry_date", { ascending: false })
         .order("created_at", { ascending: false });
-
-      const list = document.getElementById("list");
       if (error) { list.innerHTML = `<div class="empty">Failed to load: ${UI.escapeHtml(error.message)}</div>`; return; }
       if (!data || data.length === 0) { list.innerHTML = `<div class="empty">No entries yet.</div>`; return; }
 
-      list.innerHTML = data.map((e) => {
-        const blocks = UI.renderBlocks(e.blocks);
-        return `
-          <article class="entry" data-date="${e.entry_date}">
-            <div class="entry-body">
-              <div class="entry-meta">
-                <span class="date">${UI.fmtDate(e.entry_date)}</span>
-                <span>Log #${UI.escapeHtml(String(e.id).slice(0,4))}</span>
-              </div>
-              <h2>${UI.escapeHtml(e.title)}</h2>
-              ${blocks}
-            </div>
-          </article>
-        `;
-      }).join("");
+      renderTagFilters();
+      applyFilters(data);
+
+      filterTags.addEventListener("click", (e) => {
+        const btn = e.target.closest(".filter-tag");
+        if (!btn) return;
+        const tag = normalize(btn.dataset.tag);
+        if (activeTags.has(tag)) activeTags.delete(tag);
+        else activeTags.add(tag);
+        renderTagFilters();
+        applyFilters(data);
+      });
+
+      keywordInput.addEventListener("input", () => {
+        keyword = normalize(keywordInput.value);
+        applyFilters(data);
+      });
+
+      clearBtn.addEventListener("click", () => {
+        activeTags.clear();
+        keyword = "";
+        keywordInput.value = "";
+        sortFilter.value = "date_desc";
+        structuredOnlyInput.checked = false;
+        renderTagFilters();
+        applyFilters(data);
+      });
+      sortFilter.addEventListener("change", () => applyFilters(data));
+      structuredOnlyInput.addEventListener("change", () => applyFilters(data));
+      toggleFiltersBtn.addEventListener("click", () => {
+        const collapsed = filtersBody.hasAttribute("hidden");
+        if (collapsed) {
+          filtersBody.removeAttribute("hidden");
+          toggleFiltersBtn.textContent = "Collapse";
+        } else {
+          filtersBody.setAttribute("hidden", "");
+          toggleFiltersBtn.textContent = "Expand";
+        }
+      });
+
+      list.addEventListener("click", (e) => {
+        const image = e.target.closest(".zoomable-image, .block.text .value img");
+        if (!image) return;
+        if (!image.dataset.fullSrc) {
+          image.dataset.fullSrc = image.currentSrc || image.src;
+          const block = image.closest(".block");
+          image.dataset.label = block?.querySelector(".label")?.textContent?.trim() || "";
+          image.dataset.caption = "";
+        }
+        openImageModal(image);
+      });
+
+      imageModalClose.addEventListener("click", closeImageModal);
+      imageModal.addEventListener("click", (e) => {
+        if (e.target === imageModal) closeImageModal();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && imageModal.classList.contains("open")) closeImageModal();
+      });
     })();
   </script>
 </body>

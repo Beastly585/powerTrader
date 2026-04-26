@@ -4,14 +4,25 @@
 
 (function () {
   // ---------------- Tabs ----------------
+  const panes = document.querySelectorAll("section[data-pane]");
   document.getElementById("admin-tabs").addEventListener("click", (e) => {
     const btn = e.target.closest("button"); if (!btn) return;
     document.querySelectorAll("#admin-tabs button").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     const tab = btn.dataset.tab;
-    document.querySelectorAll("section[data-pane]").forEach(s => {
-      s.hidden = s.dataset.pane !== tab;
+    panes.forEach(s => {
+      const show = s.dataset.pane === tab;
+      s.hidden = !show;
+      s.style.display = show ? "block" : "none";
     });
+
+    if (tab === "log" && !logsLoaded) loadLogs();
+    if (tab === "note" && !notesLoaded) {
+      resetNoteForm(); loadNotes();
+    }
+    if (tab === "strategy" && !stratsLoaded) {
+      resetStratForm(); loadStrats();
+    }
   });
 
   // ---------------- DAILY LOG ----------------
@@ -19,18 +30,99 @@
   const logTitle   = document.getElementById("log-title");
   const builder    = document.getElementById("blocks-builder");
   const addBar     = document.querySelector(".add-block-bar");
+  const tagInputs  = document.querySelectorAll('input[name="log-tags"]');
+  const sectionLists = {
+    Setup: builder.querySelector('[data-section-list="Setup"]'),
+    "Price review": builder.querySelector('[data-section-list="Price review"]'),
+    Thesis: builder.querySelector('[data-section-list="Thesis"]'),
+    Other: builder.querySelector('[data-section-list="Other"]'),
+  };
+  tagInputs.forEach((input) => {
+    input.addEventListener("change", () => {
+      const label = input.closest(".tag-toggle");
+      if (label) label.classList.toggle("selected", input.checked);
+    });
+  });
   let editingLogId = null;
+  let logsLoaded = false, notesLoaded = false, stratsLoaded = false;
 
   // default to today
   logDate.value = new Date().toISOString().slice(0, 10);
 
   // Don't auto-populate on load - user clicks Reset to get defaults
 
-  function makeBlockRow(b = { type: "text", label: "", value: "", caption: "" }) {
-    if (!b || typeof b !== "object") b = { type: "text", label: "", value: "", caption: "" };
+  const HUBS = ["Amarillo", "Lubbock", "Midland", "Dallas", "Austin", "Houston", "Corpus Christi", "San Antonio"];
+  const TIMES_PRICE_REVIEW = ["0400", "0700", "0900"];
+  const TIMES_THESIS = ["1200", "1700", "2200", "0200"];
+
+  function inferSection(label) {
+    if (!label) return "Other";
+    const normalized = label.trim().toLowerCase();
+    if (["temperature", "cloud cover", "wind", "fuel mix", "demand"].includes(normalized)) return "Setup";
+    if (["system lambda", "congestion pricing"].includes(normalized)) return "Price review";
+    if (["predicted price action", "notes", "+1 prediction"].includes(normalized)) return "Thesis";
+    return "Other";
+  }
+
+  function getTemplateKind(label, section) {
+    const normalized = String(label || "").trim().toLowerCase();
+    if (normalized === "system lambda" && section === "Price review") return "lambdaPriceReview";
+    if (normalized === "system lambda" && section === "Thesis") return "lambdaThesis";
+    if (normalized === "congestion pricing" && section === "Price review") return "congestionPriceReview";
+    if (normalized === "congestion pricing" && section === "Thesis") return "congestionThesis";
+    return null;
+  }
+
+  function defaultLambdaData(section) {
+    const times = section === "Thesis" ? TIMES_THESIS : TIMES_PRICE_REVIEW;
+    return {
+      schema: "lambda-v1",
+      section,
+      timeslots: times.map(time => ({ time, customTime: "", price: "", note: "" })),
+    };
+  }
+
+  function defaultCongestionData(section) {
+    const times = section === "Thesis" ? TIMES_THESIS : TIMES_PRICE_REVIEW;
+    const includeRating = section === "Thesis";
+    return {
+      schema: "congestion-v1",
+      section,
+      timeslots: times.map(time => ({
+        time,
+        customTime: "",
+        hubs: HUBS.reduce((acc, hub) => {
+          acc[hub] = includeRating ? { price: "", note: "", thesisRating: "accurate" } : { price: "", note: "" };
+          return acc;
+        }, {}),
+      })),
+    };
+  }
+
+  function parseStructuredValue(raw, fallback) {
+    if (!raw) return fallback;
+    if (typeof raw === "object") return raw;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function appendRow(row, section) {
+    const target = sectionLists[section] || sectionLists.Other;
+    if (target) target.appendChild(row);
+    else builder.appendChild(row);
+  }
+
+  function makeBlockRow(b = { type: "text", label: "", value: "", caption: "", section: "Other" }) {
+    if (!b || typeof b !== "object") b = { type: "text", label: "", value: "", caption: "", section: "Other" };
+    const section = b.section || inferSection(b.label);
     const row = document.createElement("div");
     row.className = "block-row";
     row.dataset.type = b.type;
+    row.dataset.section = section;
     row.draggable = true;
     row.innerHTML = `
       <div class="row-top">
@@ -47,7 +139,7 @@
         <button type="button" class="remove">Remove</button>
       </div>
     `;
-    builder.appendChild(row);
+    appendRow(row, section);
     renderBlockContent(row, b);
 
     // Drag events
@@ -60,6 +152,13 @@
     row.querySelector(".b-type").addEventListener("change", (e) => {
       row.dataset.type = e.target.value;
       renderBlockContent(row, { type: e.target.value, label: row.querySelector(".b-label").value, value: "", caption: "" });
+    });
+    row.querySelector(".b-label").addEventListener("change", () => {
+      renderBlockContent(row, {
+        type: row.querySelector(".b-type").value,
+        label: row.querySelector(".b-label").value,
+        value: row.dataset.structuredJson || "",
+      });
     });
   }
 
@@ -100,10 +199,117 @@
 
   function renderBlockContent(row, b) {
     const c = row.querySelector(".b-content");
+    const label = row.querySelector(".b-label")?.value || b.label || "";
+    const section = row.dataset.section || b.section || inferSection(label);
+    const templateKind = getTemplateKind(label, section);
+    if (b.type === "text" && templateKind) {
+      const structured = templateKind.includes("lambda")
+        ? parseStructuredValue(b.value, defaultLambdaData(section))
+        : parseStructuredValue(b.value, defaultCongestionData(section));
+      row.dataset.structured = "true";
+      row.dataset.structuredKind = templateKind;
+      row.dataset.structuredJson = JSON.stringify(structured);
+      if (templateKind.includes("lambda")) {
+        c.innerHTML = `
+          <div class="b-hint" style="font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-bottom:8px">System Lambda · ${section} structured entry</div>
+          ${(structured.timeslots || []).map((slot, idx) => `
+            <div style="display:grid;grid-template-columns:120px 1fr 1fr;gap:8px;margin-bottom:8px">
+              <input class="sl-time" data-idx="${idx}" value="${UI.escapeHtml(slot.time === "custom" ? (slot.customTime || "") : (slot.time || ""))}" ${slot.time !== "custom" ? "readonly" : ""} placeholder="${slot.time === "custom" ? "Custom time (e.g. 1530)" : ""}" />
+              <input class="sl-price" data-idx="${idx}" placeholder="Price" value="${UI.escapeHtml(slot.price || "")}" />
+              <input class="sl-note" data-idx="${idx}" placeholder="Notes" value="${UI.escapeHtml(slot.note || "")}" />
+            </div>
+          `).join("")}
+          <button type="button" class="btn ghost sl-add-custom" style="margin-top:8px">+ Add custom time</button>
+        `;
+        c.querySelector(".sl-add-custom")?.addEventListener("click", () => {
+          structured.timeslots = structured.timeslots || [];
+          structured.timeslots.push({ time: "custom", customTime: "", price: "", note: "" });
+          row.dataset.structuredJson = JSON.stringify(structured);
+          renderBlockContent(row, { ...b, value: row.dataset.structuredJson });
+        });
+        const sync = () => {
+          const next = {
+            schema: "lambda-v1",
+            section,
+            timeslots: (structured.timeslots || []).map((slot, idx) => ({
+              time: slot.time,
+              customTime: slot.time === "custom" ? (c.querySelector(`.sl-time[data-idx="${idx}"]`)?.value.trim() || "") : "",
+              price: c.querySelector(`.sl-price[data-idx="${idx}"]`)?.value.trim() || "",
+              note: c.querySelector(`.sl-note[data-idx="${idx}"]`)?.value.trim() || "",
+            })),
+          };
+          row.dataset.structuredJson = JSON.stringify(next);
+        };
+        c.querySelectorAll("input").forEach(input => input.addEventListener("input", sync));
+      } else {
+        const includeRating = section === "Thesis";
+        c.innerHTML = `
+          <div class="b-hint" style="font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-bottom:8px">Congestion Pricing · ${section} structured entry</div>
+          ${(structured.timeslots || []).map((slot, idx) => `
+            <div style="font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin:10px 0 6px">${UI.escapeHtml(slot.time === "custom" ? (slot.customTime || "custom") : slot.time)}</div>
+            ${slot.time === "custom" ? `<input class="cp-custom" data-idx="${idx}" placeholder="Custom time (e.g. 1530)" value="${UI.escapeHtml(slot.customTime || "")}" style="margin-bottom:8px" />` : ""}
+            ${HUBS.map(hub => {
+              const rowValue = slot.hubs?.[hub] || {};
+              return `
+                <div style="display:grid;grid-template-columns:140px 120px 1fr ${includeRating ? "120px" : ""};gap:8px;margin-bottom:6px;align-items:center">
+                  <span style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">${hub}</span>
+                  <input class="cp-price" data-idx="${idx}" data-hub="${hub}" placeholder="Price" value="${UI.escapeHtml(rowValue.price || "")}" />
+                  <input class="cp-note" data-idx="${idx}" data-hub="${hub}" placeholder="Note" value="${UI.escapeHtml(rowValue.note || "")}" />
+                  ${includeRating ? `<select class="cp-rating" data-idx="${idx}" data-hub="${hub}"><option value="accurate" ${(rowValue.thesisRating||"accurate")==="accurate"?"selected":""}>accurate</option><option value="high_10" ${rowValue.thesisRating==="high_10"?"selected":""}>&gt;10% high</option><option value="low_10" ${rowValue.thesisRating==="low_10"?"selected":""}>&gt;10% low</option></select>` : ""}
+                </div>
+              `;
+            }).join("")}
+          `).join("")}
+          <button type="button" class="btn ghost cp-add-custom" style="margin-top:8px">+ Add custom time</button>
+        `;
+        c.querySelector(".cp-add-custom")?.addEventListener("click", () => {
+          structured.timeslots = structured.timeslots || [];
+          structured.timeslots.push({
+            time: "custom",
+            customTime: "",
+            hubs: HUBS.reduce((acc, hub) => {
+              acc[hub] = includeRating ? { price: "", note: "", thesisRating: "accurate" } : { price: "", note: "" };
+              return acc;
+            }, {}),
+          });
+          row.dataset.structuredJson = JSON.stringify(structured);
+          renderBlockContent(row, { ...b, value: row.dataset.structuredJson });
+        });
+        const sync = () => {
+          const next = {
+            schema: "congestion-v1",
+            section,
+            timeslots: (structured.timeslots || []).map((slot, idx) => ({
+              time: slot.time,
+              customTime: c.querySelector(`.cp-custom[data-idx="${idx}"]`)?.value.trim() || "",
+              hubs: HUBS.reduce((acc, hub) => {
+                const price = c.querySelector(`.cp-price[data-idx="${idx}"][data-hub="${hub}"]`)?.value.trim() || "";
+                const note = c.querySelector(`.cp-note[data-idx="${idx}"][data-hub="${hub}"]`)?.value.trim() || "";
+                if (includeRating) {
+                  const thesisRating = c.querySelector(`.cp-rating[data-idx="${idx}"][data-hub="${hub}"]`)?.value || "accurate";
+                  acc[hub] = { price, note, thesisRating };
+                } else {
+                  acc[hub] = { price, note };
+                }
+                return acc;
+              }, {}),
+            })),
+          };
+          row.dataset.structuredJson = JSON.stringify(next);
+        };
+        c.querySelectorAll("input,select").forEach(input => input.addEventListener("input", sync));
+      }
+      return;
+    }
+
+    row.dataset.structured = "";
+    row.dataset.structuredKind = "";
+    row.dataset.structuredJson = "";
     if (b.type === "text") {
       // Don't escape HTML — text blocks contain rich text from contenteditable
+      const placeholder = UI.escapeHtml(b.placeholder || "Write…");
       c.innerHTML = `
-        <div class="b-value" contenteditable="true" data-placeholder="Write…" style="min-height:100px;background:var(--bg);color:var(--ink);border:1px solid var(--line);padding:12px;font-family:var(--serif);font-size:16px;line-height:1.6;outline:none">${b.value || ""}</div>
+        <div class="b-value" contenteditable="true" data-placeholder="${placeholder}" style="min-height:100px;background:var(--bg);color:var(--ink);border:1px solid var(--line);padding:12px;font-family:var(--serif);font-size:16px;line-height:1.6;outline:none">${b.value || ""}</div>
         <div class="b-hint" style="font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin-top:4px">Cmd+B bold · Cmd+I italic · Cmd+U underline</div>
       `;
       const ed = c.querySelector(".b-value");
@@ -185,11 +391,30 @@
     return [...builder.querySelectorAll(".block-row")].map(row => ({
       type:  row.querySelector(".b-type").value,
       label: row.querySelector(".b-label").value.trim(),
-      value: row.dataset.type === "text" 
-        ? row.querySelector(".b-value").innerHTML.trim() 
+      section: row.dataset.section || inferSection(row.querySelector(".b-label").value.trim()),
+      value: row.dataset.type === "text"
+        ? (row.dataset.structuredJson || row.querySelector(".b-value")?.innerHTML?.trim() || "")
         : row.querySelector(".b-value").value.trim(),
       caption: row.querySelector(".b-caption")?.value.trim() || "",
     })).filter(b => b.value && b.value !== "<br>");
+  }
+
+  function readTags() {
+    return [...tagInputs].filter(input => input.checked).map(input => input.value);
+  }
+
+  function setTags(tags = []) {
+    [...tagInputs].forEach(input => {
+      input.checked = tags.includes(input.value);
+      const label = input.closest(".tag-toggle");
+      if (label) label.classList.toggle("selected", input.checked);
+    });
+  }
+
+  function isMissingTagsColumnError(error) {
+    const msg = String(error?.message || "");
+    return /column .*tags .*does not exist/i.test(msg) ||
+      /could not find .*tags.*column.*daily_logs.*schema cache/i.test(msg);
   }
 
   function resetLogForm() {
@@ -197,11 +422,20 @@
     document.getElementById("log-form-title").textContent = "New daily log";
     logDate.value = new Date().toISOString().slice(0, 10);
     logTitle.value = "";
-    builder.innerHTML = "";
-    // Add default blocks for new entries: Summary, Weather, Prediction
-    makeBlockRow({ type: "text", label: "Summary", value: "" });
-    makeBlockRow({ type: "image", label: "Weather", value: "", caption: "" });
-    makeBlockRow({ type: "text", label: "Prediction", value: "" });
+    Object.values(sectionLists).forEach(list => { if (list) list.innerHTML = ""; });
+    setTags([]);
+    makeBlockRow({ type: "text", label: "Temperature", section: "Setup", placeholder: "Temperature notes" });
+    makeBlockRow({ type: "text", label: "Cloud Cover", section: "Setup", placeholder: "Cloud cover notes" });
+    makeBlockRow({ type: "text", label: "Wind", section: "Setup", placeholder: "Wind notes" });
+    makeBlockRow({ type: "text", label: "Fuel Mix", section: "Setup", placeholder: "Fuel mix notes" });
+    makeBlockRow({ type: "text", label: "Demand", section: "Setup", placeholder: "Demand notes" });
+    makeBlockRow({ type: "text", label: "System Lambda", section: "Price review", value: JSON.stringify(defaultLambdaData("Price review")) });
+    makeBlockRow({ type: "text", label: "Congestion Pricing", section: "Price review", value: JSON.stringify(defaultCongestionData("Price review")) });
+    makeBlockRow({ type: "text", label: "System Lambda", section: "Thesis", value: JSON.stringify(defaultLambdaData("Thesis")) });
+    makeBlockRow({ type: "text", label: "Congestion Pricing", section: "Thesis", value: JSON.stringify(defaultCongestionData("Thesis")) });
+    makeBlockRow({ type: "text", label: "Predicted Price Action", section: "Thesis", placeholder: "Predicted price action notes" });
+    makeBlockRow({ type: "text", label: "Notes", section: "Thesis", placeholder: "Thesis notes" });
+    makeBlockRow({ type: "text", label: "+1 Prediction", section: "Thesis", placeholder: "+1 prediction" });
   }
 
   addBar.addEventListener("click", (e) => {
@@ -215,9 +449,20 @@
     const title = logTitle.value.trim();
     if (!title) return UI.toast("Title required", "error");
     const payload = { entry_date: logDate.value, title, blocks: readBlocks() };
+    const tags = readTags();
+    if (tags.length) payload.tags = tags;
+
     let res;
-    if (editingLogId) res = await sb.from("daily_logs").update(payload).eq("id", editingLogId);
-    else              res = await sb.from("daily_logs").insert(payload);
+    const insertOrUpdate = async () => {
+      if (editingLogId) return await sb.from("daily_logs").update(payload).eq("id", editingLogId);
+      return await sb.from("daily_logs").insert(payload);
+    };
+
+    res = await insertOrUpdate();
+    if (res.error && isMissingTagsColumnError(res.error)) {
+      delete payload.tags;
+      res = await insertOrUpdate();
+    }
     if (res.error) return UI.toast(res.error.message, "error");
     UI.toast(editingLogId ? "Log updated" : "Log saved");
     resetLogForm();
@@ -225,19 +470,26 @@
   });
 
   async function loadLogs() {
-    const { data, error } = await sb.from("daily_logs").select("id,entry_date,title").order("entry_date", { ascending: false }).order("created_at", { ascending: false });
     const el = document.getElementById("logs-list");
+    let query = sb.from("daily_logs").select("id,entry_date,title,tags").order("entry_date", { ascending: false }).order("created_at", { ascending: false });
+    let { data, error } = await query;
+    if (error && isMissingTagsColumnError(error)) {
+      ({ data, error } = await sb.from("daily_logs").select("id,entry_date,title").order("entry_date", { ascending: false }).order("created_at", { ascending: false }));
+    }
     if (error) return el.innerHTML = `<div class="empty">${UI.escapeHtml(error.message)}</div>`;
     if (!data.length) return el.innerHTML = `<div class="empty">No logs yet.</div>`;
-    el.innerHTML = data.map(l => `
+    el.innerHTML = data.map(l => {
+      const tagHtml = Array.isArray(l.tags) && l.tags.length ? `<div class="tag-list">${l.tags.map(t => `<span class="tag-pill">${UI.escapeHtml(t)}</span>`).join("")}</div>` : "";
+      return `
       <div class="admin-row" data-id="${l.id}">
-        <div class="meta"><strong>${UI.escapeHtml(l.title)}</strong><br/>${UI.fmtDateShort(l.entry_date)}</div>
+        <div class="meta"><strong>${UI.escapeHtml(l.title)}</strong><br/>${UI.fmtDateShort(l.entry_date)}${tagHtml}</div>
         <div class="actions">
           <button class="edit">Edit</button>
           <button class="del">Delete</button>
         </div>
       </div>
-    `).join("");
+    `;
+    }).join("");
     el.querySelectorAll(".del").forEach(b => b.addEventListener("click", async (e) => {
       const id = e.target.closest(".admin-row").dataset.id;
       if (!confirm("Delete this log?")) return;
@@ -253,10 +505,17 @@
       document.getElementById("log-form-title").textContent = "Editing log";
       logDate.value = data.entry_date;
       logTitle.value = data.title;
-      builder.innerHTML = "";
-      (data.blocks || []).filter(b => b && b.type).forEach(makeBlockRow);
+      setTags(data.tags || []);
+      Object.values(sectionLists).forEach(list => { if (list) list.innerHTML = ""; });
+      const incomingBlocks = Array.isArray(data.blocks) ? data.blocks : [];
+      const hydratedBlocks = incomingBlocks
+        .filter(b => b && typeof b === "object")
+        .map(b => ({ ...b, type: b.type || "text" }));
+      if (hydratedBlocks.length) hydratedBlocks.forEach(makeBlockRow);
+      else makeBlockRow({ type: "text", label: "", value: "", section: "Other" });
       window.scrollTo({ top: 0, behavior: "smooth" });
     }));
+    logsLoaded = true;
   }
 
   // ---------------- NOTES ----------------
@@ -355,6 +614,7 @@
       noteTitle.value = data.title; noteBody.innerHTML = data.body;
       window.scrollTo({ top: 0, behavior: "smooth" });
     }));
+    notesLoaded = true;
   }
 
   // ---------------- STRATEGIES ----------------
@@ -483,9 +743,10 @@
       stratStart.value = data.period_start || ""; stratEnd.value = data.period_end || "";
       window.scrollTo({ top: 0, behavior: "smooth" });
     }));
+    stratsLoaded = true;
   }
 
   // ---------------- INIT ----------------
-  makeBlockRow({ type: "text", label: "Summary", value: "" });
-  loadLogs(); loadNotes(); loadStrats();
+  resetLogForm();
+  loadLogs();
 })();
